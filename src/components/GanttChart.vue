@@ -185,18 +185,6 @@ function widthPercent(task: any) {
   );
 }
 
-// utilitaire : numéro de semaine ISO
-function getIsoWeekNumber(date: Date): number {
-  const tmp = new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
-  );
-  const dayNum = tmp.getUTCDay() || 7;
-  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((+tmp - +yearStart) / 86400000 + 1) / 7);
-  return weekNo;
-}
-
 // 5) Grille temporelle selon l'échelle choisie
 type TimeBucket = {
   start: Date;
@@ -214,15 +202,17 @@ const timeBuckets = computed<TimeBucket[]>(() => {
   const oneDayMs = 24 * 60 * 60 * 1000;
 
   if (timeScale.value === 'week') {
-    // semaine complète lundi -> dimanche
+    // Une case par jour, label court "lun 24", "mar 25", etc.
     let ts = start.getTime();
     while (ts <= end.getTime()) {
       const base = new Date(ts);
       const bucketStart = new Date(base);
       bucketStart.setHours(dayStartHour.value, 0, 0, 0);
 
-      const weekNumber = getIsoWeekNumber(bucketStart);
-      const label = `S${weekNumber}`;
+      const label = bucketStart.toLocaleDateString('fr-FR', {
+        weekday: 'short',
+        day: '2-digit',
+      });
 
       const left =
         ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
@@ -238,11 +228,10 @@ const timeBuckets = computed<TimeBucket[]>(() => {
     while (weekStart <= end) {
       const weekEnd = new Date(weekStart.getTime() + 6 * oneDayMs);
 
-      const weekNumber = getIsoWeekNumber(weekStart);
       const monthLabel = weekStart.toLocaleDateString('fr-FR', {
         month: 'short',
       });
-      const label = `S${weekNumber} (${monthLabel})`;
+      const label = monthLabel;
 
       const left =
         ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) *

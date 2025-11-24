@@ -7,12 +7,13 @@ const props = defineProps<{ tasks: Task[] }>();
 
 // échelle de temps
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
-// heure de début de journée (provenant des options Grist)
+// heure de début de journée (panneau Grist)
 const dayStartHour = ref<number>(0);
+// décalage temporel (en nombre de périodes)
+const offset = ref<number>(0);
 
 declare const grist: any;
 
-// Charger l'option "dayStartHour" depuis le panneau de config du widget
 if (typeof grist !== 'undefined') {
   grist.onOptions((options: any) => {
     if (options && typeof options.dayStartHour === 'number') {
@@ -36,7 +37,7 @@ const parsedTasks = computed(() =>
     }),
 );
 
-// 2) Lignes hiérarchiques : groupBy (Unite) -> groupBy2 (Personnel)
+// 2) Lignes hiérarchiques
 type Lane = {
   index: number;
   groupBy: string;
@@ -60,7 +61,6 @@ const lanes = computed<Lane[]>(() => {
   }
 
   for (const [g1, tasks] of byGroup.entries()) {
-    // ligne principale (Unite)
     result.push({
       index: nextIndex++,
       groupBy: g1,
@@ -69,7 +69,6 @@ const lanes = computed<Lane[]>(() => {
       isGroupHeader: true,
     });
 
-    // sous-lignes (Personnel)
     const seenSub = new Set<string>();
     for (const t of tasks) {
       const g2 = (t.groupBy2 ?? '').toString();
@@ -112,41 +111,41 @@ function topPx(task: any) {
   return laneTopPx(task.laneIndex);
 }
 
-// 4) Bornes réelles (basées sur les tâches)
+// 4) Bornes réelles ou date du jour (pour pointer au minimum sur aujourd'hui)
 const rawMinDate = computed(() => {
-  if (!tasksWithLane.value.length) return new Date();
+  if (!tasksWithLane.value.length) {
+    // aucune tâche → on pointe sur aujourd'hui
+    return new Date();
+  }
   return new Date(
     Math.min(...tasksWithLane.value.map((t) => t.startDate.getTime())),
   );
 });
 const rawMaxDate = computed(() => {
-  if (!tasksWithLane.value.length) return new Date();
+  if (!tasksWithLane.value.length) {
+    // aucune tâche → on prend aussi aujourd'hui
+    return new Date();
+  }
   return new Date(
     Math.max(...tasksWithLane.value.map((t) => t.endDate.getTime())),
   );
 });
 
 /**
- * NOUVELLE LOGIQUE minDate / maxDate
- * - week    : exactement une semaine LUNDI -> DIMANCHE
- * - month   : du lundi de la 1ère semaine du mois au dimanche de la dernière semaine du même mois
- * - quarter : inchangé
+ * minDate / maxDate de base, NON décalées
  */
-const minDate = computed(() => {
+const baseMinDate = computed(() => {
   const d = new Date(rawMinDate.value);
 
-  // VUE SEMAINE : lundi de la semaine de rawMinDate
   if (timeScale.value === 'week') {
-    const day = d.getDay(); // 0 = dimanche, 1 = lundi, ...
+    const day = d.getDay(); // 0 = dimanche, 1 = lundi ...
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     d.setDate(d.getDate() + diffToMonday);
     d.setHours(0, 0, 0, 0);
     return d;
   }
 
-  // VUE MOIS : lundi de la première semaine qui intersecte le mois de rawMinDate
   if (timeScale.value === 'month') {
-    // Se placer au 1er jour du mois de rawMinDate
     d.setDate(1);
     const day = d.getDay();
     const diffToMonday = (day === 0 ? -6 : 1) - day;
@@ -155,7 +154,6 @@ const minDate = computed(() => {
     return d;
   }
 
-  // VUE TRIMESTRE : inchangée
   const q = Math.floor(d.getMonth() / 3);
   const qStart = new Date(d.getFullYear(), q * 3, 1);
   const day = qStart.getDay();
@@ -165,10 +163,9 @@ const minDate = computed(() => {
   return qStart;
 });
 
-const maxDate = computed(() => {
+const baseMaxDate = computed(() => {
   const d = new Date(rawMaxDate.value);
 
-  // VUE SEMAINE : dimanche de la même semaine que minDate (toujours 7 jours)
   if (timeScale.value === 'week') {
     const day = d.getDay();
     const diffToMonday = (day === 0 ? -6 : 1) - day;
@@ -182,18 +179,15 @@ const maxDate = computed(() => {
     return sunday;
   }
 
-  // VUE MOIS : dimanche de la dernière semaine qui intersecte le même mois
   if (timeScale.value === 'month') {
-    // Dernier jour du mois de rawMaxDate
     const lastDayOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const day = lastDayOfMonth.getDay(); // 0 = dimanche, ...
+    const day = lastDayOfMonth.getDay();
     const diffToSunday = 7 - (day === 0 ? 7 : day);
     lastDayOfMonth.setDate(lastDayOfMonth.getDate() + diffToSunday);
     lastDayOfMonth.setHours(23, 59, 59, 999);
     return lastDayOfMonth;
   }
 
-  // VUE TRIMESTRE : inchangée
   const q = Math.floor(d.getMonth() / 3);
   const qEnd = new Date(d.getFullYear(), q * 3 + 3, 0);
   const day = qEnd.getDay();
@@ -201,6 +195,45 @@ const maxDate = computed(() => {
   qEnd.setDate(qEnd.getDate() + diff);
   qEnd.setHours(23, 59, 59, 999);
   return qEnd;
+});
+
+/**
+ * Application du décalage (offset) selon l'échelle
+ */
+const minDate = computed(() => {
+  const d = new Date(baseMinDate.value);
+  const k = offset.value;
+
+  if (timeScale.value === 'week') {
+    d.setDate(d.getDate() + k * 7);
+    return d;
+  }
+
+  if (timeScale.value === 'month') {
+    d.setMonth(d.getMonth() + k);
+    return d;
+  }
+
+  d.setMonth(d.getMonth() + k * 3);
+  return d;
+});
+
+const maxDate = computed(() => {
+  const d = new Date(baseMaxDate.value);
+  const k = offset.value;
+
+  if (timeScale.value === 'week') {
+    d.setDate(d.getDate() + k * 7);
+    return d;
+  }
+
+  if (timeScale.value === 'month') {
+    d.setMonth(d.getMonth() + k);
+    return d;
+  }
+
+  d.setMonth(d.getMonth() + k * 3);
+  return d;
 });
 
 const totalMs = computed(() => {
@@ -235,10 +268,9 @@ function getIsoWeekNumber(date: Date): number {
   return weekNo;
 }
 
-// 5) Buckets pour les deux lignes d'en-tête
+// 5) Buckets
 type Bucket = { left: number; width: number; label: string };
 
-// semaine : ligne1 semaines, ligne2 jours
 const weekWeekBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'week') return res;
@@ -285,7 +317,6 @@ const weekDayBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// mois : ligne1 mois, ligne2 semaines
 const monthMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'month') return res;
@@ -340,7 +371,6 @@ const monthWeekBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// trimestre : une seule ligne de mois
 const quarterMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'quarter') return res;
@@ -372,11 +402,24 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   }
   return res;
 });
+
+/**
+ * Navigation par flèches
+ */
+function goPrev() {
+  offset.value -= 1;
+}
+function goNext() {
+  offset.value += 1;
+}
+function resetOffset() {
+  offset.value = 0;
+}
 </script>
 
 <template>
   <div class="gantt-wrapper">
-    <!-- Colonne de gauche : Unite + Personnel -->
+    <!-- Colonne de gauche -->
     <div class="gantt-sidebar">
       <div v-if="!lanes.length" class="gantt-empty">
         Aucune tâche
@@ -399,30 +442,44 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
     <!-- Zone de droite -->
     <div class="gantt">
       <div class="gantt-toolbar">
+        <!-- Navigation -->
+        <button class="gantt-btn" @click="goPrev">
+          ◀
+        </button>
+        <button class="gantt-btn" @click="resetOffset">
+          Aujourd'hui
+        </button>
+        <button class="gantt-btn" @click="goNext">
+          ▶
+        </button>
+
+        <div class="gantt-toolbar-sep" />
+
+        <!-- Sélecteur d'échelle -->
         <button
           class="gantt-btn"
           :class="{ 'is-active': timeScale === 'week' }"
-          @click="timeScale = 'week'"
+          @click="timeScale = 'week'; offset = 0"
         >
           Semaine
         </button>
         <button
           class="gantt-btn"
           :class="{ 'is-active': timeScale === 'month' }"
-          @click="timeScale = 'month'"
+          @click="timeScale = 'month'; offset = 0"
         >
           Mois
         </button>
         <button
           class="gantt-btn"
           :class="{ 'is-active': timeScale === 'quarter' }"
-          @click="timeScale = 'quarter'"
+          @click="timeScale = 'quarter'; offset = 0"
         >
           Trimestre
         </button>
       </div>
 
-      <!-- En-tête multi-niveaux -->
+      <!-- En-tête -->
       <div class="gantt-header">
         <!-- Ligne 1 -->
         <div class="gantt-header-row">
@@ -524,7 +581,6 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   color: #e5e7eb;
 }
 
-/* Colonne de gauche */
 .gantt-sidebar {
   position: relative;
   border-right: 1px solid #374151;
@@ -552,7 +608,6 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   color: #d1d5db;
 }
 
-/* Zone de droite */
 .gantt {
   position: relative;
   display: flex;
@@ -560,13 +615,20 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   height: 100%;
 }
 
-/* Toolbar */
 .gantt-toolbar {
   display: flex;
+  align-items: center;
   gap: 4px;
   padding: 4px 6px;
   border-bottom: 1px solid #374151;
   background-color: #020617;
+}
+
+.gantt-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: #374151;
+  margin: 0 4px;
 }
 
 .gantt-btn {
@@ -584,7 +646,6 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   border-color: #2563eb;
 }
 
-/* En-tête multi-lignes */
 .gantt-header {
   position: relative;
   border-bottom: 1px solid #374151;
@@ -611,7 +672,6 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   white-space: nowrap;
 }
 
-/* Corps */
 .gantt-body {
   position: relative;
   flex: 1;

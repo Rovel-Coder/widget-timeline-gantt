@@ -1,13 +1,13 @@
-<!-- src/components/GanttChart.vue -->
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick } from 'vue';
 import type { Task } from '../gristBridge';
+
 import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 import GanttHeader from './GanttHeader.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.2';
+const WIDGET_VERSION = 'V0.0.3';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -253,14 +253,20 @@ function widthPercent(task: any) {
   );
 }
 
+// numéro de semaine ISO corrigé
 function getIsoWeekNumber(date: Date): number {
   const tmp = new Date(
     Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
   );
-  const dayNum = tmp.getUTCDay() || 7;
-  tmp.setUTCDate(tmp.getUTCDay() + 4 - dayNum);
+
+  const day = tmp.getUTCDay() || 7; // 1..7 (lundi..dimanche)
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - day); // jeudi de la semaine ISO
+
   const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((+tmp - +yearStart) / 86400000 + 1) / 7);
+  const weekNo = Math.ceil(
+    ((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+  );
+
   return weekNo;
 }
 
@@ -437,8 +443,7 @@ onMounted(async () => {
 function onBodyScroll(e: Event) {
   const body = e.target as HTMLDivElement;
   if (sidebarRef.value) {
-    // juste synchronisation verticale
-    const sidebarEl = (sidebarRef.value.$el as HTMLElement) || null;
+    const sidebarEl = sidebarRef.value.$el as HTMLElement;
     if (sidebarEl) {
       sidebarEl.scrollTop = body.scrollTop;
     }
@@ -524,7 +529,6 @@ function onBodyScroll(e: Event) {
   color: #e5e7eb;
 }
 
-/* zone droite */
 .gantt {
   position: relative;
   display: flex;
@@ -543,7 +547,6 @@ function onBodyScroll(e: Event) {
   min-height: 100%;
 }
 
-/* fond des lanes côté droite */
 .gantt-lane-bg {
   position: absolute;
   left: 0;

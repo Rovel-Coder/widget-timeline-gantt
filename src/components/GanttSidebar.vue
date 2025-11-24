@@ -22,12 +22,12 @@ function laneTopPx(laneIndex: number) {
 
 <template>
   <div class="gantt-sidebar">
-    <!-- zone alignée avec la toolbar de droite -->
+    <!-- barre alignée avec la toolbar de droite -->
     <div class="gantt-sidebar-toolbar">
       <span class="gantt-version">{{ props.version }}</span>
     </div>
 
-    <!-- rectangle invisible pour compenser la zone dates/mois (36px) -->
+    <!-- placeholder invisible (même hauteur que les 2 lignes de header à droite) -->
     <div class="gantt-sidebar-placeholder"></div>
 
     <div v-if="!props.lanes.length" class="gantt-empty">
@@ -70,13 +70,14 @@ function laneTopPx(laneIndex: number) {
   overflow: hidden;
 }
 
+/* même hauteur que .gantt-toolbar à droite, sans bordure pour éviter le pixel en plus */
 .gantt-sidebar-toolbar {
   height: 24px;
-  border-bottom: 1px solid #374151;
   background-color: #020617;
   display: flex;
   align-items: center;
   padding: 0 8px;
+  box-sizing: border-box;
 }
 
 .gantt-version {
@@ -84,11 +85,13 @@ function laneTopPx(laneIndex: number) {
   color: #9ca3af;
 }
 
+/* placeholder : hauteur des 2 lignes de header (2 * 18) */
 .gantt-sidebar-placeholder {
   height: 36px;
   background-color: #111827;
 }
 
+/* contenu des lanes */
 .gantt-sidebar-inner {
   position: relative;
   min-height: 100%;

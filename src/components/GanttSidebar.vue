@@ -9,15 +9,8 @@ const props = defineProps<{
   laneHeight: number;
   laneGap: number;
   lanesTopOffset: number;
+  laneTopFn: (laneIndex: number) => number;
 }>();
-
-function laneTopPx(laneIndex: number) {
-  return (
-    props.lanesTopOffset +
-    props.laneGap +
-    laneIndex * (props.laneHeight + props.laneGap)
-  );
-}
 </script>
 
 <template>
@@ -39,7 +32,7 @@ function laneTopPx(laneIndex: number) {
         :key="'sbg-' + lane.index"
         class="gantt-lane-bg-sidebar"
         :style="{
-          top: laneTopPx(lane.index) + 'px',
+          top: props.laneTopFn(lane.index) + 'px',
           height: props.laneHeight + 'px'
         }"
       ></div>
@@ -53,7 +46,7 @@ function laneTopPx(laneIndex: number) {
           'gantt-lane-sub': !lane.isGroupHeader,
         }"
         :style="{
-          top: laneTopPx(lane.index) + 'px',
+          top: props.laneTopFn(lane.index) + 'px',
           height: props.laneHeight + 'px'
         }"
       >

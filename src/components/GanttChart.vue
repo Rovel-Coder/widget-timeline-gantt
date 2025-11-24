@@ -461,6 +461,7 @@ function onBodyScroll(e: Event) {
       :lane-height="laneHeight"
       :lane-gap="laneGap"
       :lanes-top-offset="lanesTopOffset"
+      :lane-top-fn="laneTopPx"
     />
 
     <!-- Zone de droite -->

@@ -3,5 +3,8 @@ import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
   plugins: [vue()],
-  base: '/widget-timeline-gantt/',   // important pour GitHub Pages
+  base: '/widget-timeline-gantt/',   // déjà vu
+  build: {
+    outDir: 'docs',                  // au lieu de 'dist'
+  },
 });

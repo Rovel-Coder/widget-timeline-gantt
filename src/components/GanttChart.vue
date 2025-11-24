@@ -3,16 +3,25 @@
 import { computed, ref, onMounted, nextTick } from 'vue';
 import type { Task } from '../gristBridge';
 
+// Version du widget : à mettre à jour manuellement
+const WIDGET_VERSION = 'V0.0.1';
+
 const props = defineProps<{ tasks: Task[] }>();
 
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 const dayStartHour = ref<number>(0);
 
+// géométrie verticale
 const laneHeight = 24;
 const laneGap = 4;
-// hauteur totale de l’en-tête de droite: 2 lignes * 18px = 36
-const headerRowHeight = 18;
-const headerHeight = headerRowHeight * 2;
+
+// hauteurs des zones de droite
+const toolbarHeight = 24;      // hauteur visuelle approx. de .gantt-toolbar
+const headerRowHeight = 18;    // hauteur d’une ligne dans .gantt-header-row
+const headerHeight = headerRowHeight * 2; // 36 px pour les 2 lignes de timeline
+
+// on commence les lanes sous toolbar + header
+const lanesTopOffset = toolbarHeight + headerHeight;
 
 const offset = ref<number>(0);
 
@@ -107,13 +116,15 @@ const tasksWithLane = computed(() => {
   });
 });
 
+// Y des lanes = même offset que la zone de droite (toolbar + header)
 function laneTopPx(laneIndex: number) {
-  return headerHeight + laneGap + laneIndex * (laneHeight + laneGap);
+  return lanesTopOffset + laneGap + laneIndex * (laneHeight + laneGap);
 }
 function topPx(task: any) {
   return laneTopPx(task.laneIndex);
 }
 
+// --- Dates / échelles identiques à ta version précédente ---
 const referenceDate = computed(() => {
   if (!tasksWithLane.value.length) {
     return new Date();
@@ -436,7 +447,12 @@ function onBodyScroll(e: Event) {
   <div class="gantt-wrapper">
     <!-- Colonne de gauche -->
     <div class="gantt-sidebar" ref="sidebarRef">
-      <!-- Faux header gauche, 2 lignes de rectangles comme la timeline -->
+      <!-- zone alignée avec la toolbar de droite -->
+      <div class="gantt-sidebar-toolbar">
+        <span class="gantt-version">{{ WIDGET_VERSION }}</span>
+      </div>
+
+      <!-- zone alignée avec les 2 lignes de timeline -->
       <div class="gantt-sidebar-header">
         <div class="gantt-sidebar-header-row"></div>
         <div class="gantt-sidebar-header-row"></div>
@@ -476,6 +492,7 @@ function onBodyScroll(e: Event) {
 
     <!-- Zone de droite -->
     <div class="gantt">
+      <!-- Toolbar -->
       <div class="gantt-toolbar">
         <button class="gantt-btn" @click="goPrev">◀</button>
         <button class="gantt-btn" @click="resetOffset">Aujourd'hui</button>
@@ -506,6 +523,7 @@ function onBodyScroll(e: Event) {
         </button>
       </div>
 
+      <!-- En-tête multi-lignes -->
       <div class="gantt-header">
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
@@ -572,6 +590,7 @@ function onBodyScroll(e: Event) {
         </div>
       </div>
 
+      <!-- Corps -->
       <div class="gantt-body" ref="bodyRef" @scroll="onBodyScroll">
         <div v-if="!tasksWithLane.length" class="gantt-empty">
           Aucune tâche à afficher
@@ -619,15 +638,32 @@ function onBodyScroll(e: Event) {
   color: #e5e7eb;
 }
 
+/* COLONNE GAUCHE */
 .gantt-sidebar {
   position: relative;
   border-right: 1px solid #374151;
   overflow: hidden;
 }
 
-/* Fausse zone d’en-tête à gauche, 2 lignes comme la timeline */
+/* zone alignée avec la toolbar de droite */
+.gantt-sidebar-toolbar {
+  height: 24px; /* doit matcher toolbarHeight */
+  border-bottom: 1px solid #374151;
+  background-color: #020617;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+}
+
+/* Version du widget */
+.gantt-version {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+/* zone alignée avec les 2 lignes de timeline */
 .gantt-sidebar-header {
-  height: 36px; /* 2 * 18px */
+  height: 36px; /* 2 * headerRowHeight */
   border-bottom: 1px solid #374151;
   background-color: #111827;
 }
@@ -673,6 +709,7 @@ function onBodyScroll(e: Event) {
   color: #d1d5db;
 }
 
+/* COLONNE DROITE */
 .gantt {
   position: relative;
   display: flex;
@@ -680,6 +717,7 @@ function onBodyScroll(e: Event) {
   height: 100%;
 }
 
+/* Toolbar */
 .gantt-toolbar {
   display: flex;
   align-items: center;
@@ -687,6 +725,8 @@ function onBodyScroll(e: Event) {
   padding: 4px 6px;
   border-bottom: 1px solid #374151;
   background-color: #020617;
+  height: 24px; /* doit matcher toolbarHeight */
+  box-sizing: border-box;
 }
 
 .gantt-toolbar-sep {
@@ -711,6 +751,7 @@ function onBodyScroll(e: Event) {
   border-color: #2563eb;
 }
 
+/* En-tête multi-lignes */
 .gantt-header {
   position: relative;
   border-bottom: 1px solid #374151;
@@ -721,7 +762,7 @@ function onBodyScroll(e: Event) {
 
 .gantt-header-row {
   position: relative;
-  height: 18px;
+  height: 18px; /* doit matcher headerRowHeight */
   border-bottom: 1px solid #111827;
   overflow: hidden;
 }
@@ -743,6 +784,7 @@ function onBodyScroll(e: Event) {
   font-weight: 600;
 }
 
+/* Corps */
 .gantt-body {
   position: relative;
   flex: 1;

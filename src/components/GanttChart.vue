@@ -21,10 +21,10 @@ const parsedTasks = computed(() =>
 // 2) Lignes hiérarchiques : groupBy (Unite) -> groupBy2 (Personnel)
 type Lane = {
   index: number;
-  groupBy: string;   // Unité
-  groupBy2: string;  // Personnel (ou vide pour la ligne principale)
+  groupBy: string;
+  groupBy2: string;
   label: string;
-  isGroupHeader: boolean; // true = ligne Unite, false = sous-ligne Personnel
+  isGroupHeader: boolean;
 };
 
 const laneHeight = 24;
@@ -34,7 +34,6 @@ const lanes = computed<Lane[]>(() => {
   const result: Lane[] = [];
   let nextIndex = 0;
 
-  // Regrouper d'abord les tâches par groupBy
   const byGroup = new Map<string, typeof parsedTasks.value>();
   for (const t of parsedTasks.value) {
     const g1 = (t.groupBy ?? '').toString();
@@ -43,7 +42,7 @@ const lanes = computed<Lane[]>(() => {
   }
 
   for (const [g1, tasks] of byGroup.entries()) {
-    // 1) Ligne principale pour groupBy (Unite)
+    // ligne principale (Unite)
     result.push({
       index: nextIndex++,
       groupBy: g1,
@@ -52,13 +51,12 @@ const lanes = computed<Lane[]>(() => {
       isGroupHeader: true,
     });
 
-    // 2) Sous-lignes pour chaque groupBy2 distinct (Personnel) dans cette Unite
+    // sous-lignes (Personnel)
     const seenSub = new Set<string>();
     for (const t of tasks) {
       const g2 = (t.groupBy2 ?? '').toString();
       if (!g2 || seenSub.has(g2)) continue;
       seenSub.add(g2);
-
       result.push({
         index: nextIndex++,
         groupBy: g1,
@@ -72,7 +70,7 @@ const lanes = computed<Lane[]>(() => {
   return result;
 });
 
-// 3) Associer chaque tâche à un laneIndex
+// 3) Tâches avec laneIndex
 const tasksWithLane = computed(() => {
   const byKey = new Map<string, number>();
   for (const lane of lanes.value) {
@@ -89,29 +87,23 @@ const tasksWithLane = computed(() => {
   });
 });
 
-// Position verticale
 function laneTopPx(laneIndex: number) {
   return laneGap + laneIndex * (laneHeight + laneGap);
 }
-
 function topPx(task: any) {
   return laneTopPx(task.laneIndex);
 }
 
-// 4) Échelle de temps
+// 4) Échelle de temps commune
 const minDate = computed(() => {
-  if (!tasksWithLane.value.length) {
-    return new Date();
-  }
+  if (!tasksWithLane.value.length) return new Date();
   return new Date(
     Math.min(...tasksWithLane.value.map((t) => t.startDate.getTime())),
   );
 });
 
 const maxDate = computed(() => {
-  if (!tasksWithLane.value.length) {
-    return new Date();
-  }
+  if (!tasksWithLane.value.length) return new Date();
   return new Date(
     Math.max(...tasksWithLane.value.map((t) => t.endDate.getTime())),
   );
@@ -129,7 +121,6 @@ function leftPercent(task: any) {
     100
   );
 }
-
 function widthPercent(task: any) {
   return (
     ((task.endDate.getTime() - task.startDate.getTime()) /
@@ -137,11 +128,45 @@ function widthPercent(task: any) {
     100
   );
 }
+
+// 5) Grille temporelle (un bloc par jour)
+type DayBucket = {
+  date: Date;
+  label: string;
+  left: number;   // en %
+  width: number;  // en %
+};
+
+const dayBuckets = computed<DayBucket[]>(() => {
+  const buckets: DayBucket[] = [];
+  if (!tasksWithLane.value.length) return buckets;
+
+  const start = new Date(minDate.value);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(maxDate.value);
+  end.setHours(23, 59, 59, 999);
+
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDayMs) {
+    const d = new Date(ts);
+    const label = d.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+    });
+
+    const left =
+      ((d.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
+    const width = (oneDayMs / totalMs.value) * 100;
+
+    buckets.push({ date: d, label, left, width });
+  }
+  return buckets;
+});
 </script>
 
 <template>
   <div class="gantt-wrapper">
-    <!-- Colonne de gauche : Unite + Personnel en sous-lignes -->
+    <!-- Colonne de gauche : Unite + Personnel -->
     <div class="gantt-sidebar">
       <div v-if="!lanes.length" class="gantt-empty">
         Aucune tâche
@@ -161,28 +186,45 @@ function widthPercent(task: any) {
       </div>
     </div>
 
-    <!-- Zone de droite : barres -->
+    <!-- Zone de droite : en-tête + barres -->
     <div class="gantt">
-      <div v-if="!tasksWithLane.length" class="gantt-empty">
-        Aucune tâche à afficher
-      </div>
-
-      <div v-else>
+      <!-- En-tête temporel -->
+      <div class="gantt-header" v-if="dayBuckets.length">
         <div
-          v-for="task in tasksWithLane"
-          :key="task.id"
-          class="gantt-bar"
+          v-for="bucket in dayBuckets"
+          :key="bucket.label + bucket.left"
+          class="gantt-header-cell"
           :style="{
-            top: topPx(task) + 'px',
-            left: leftPercent(task) + '%',
-            width: widthPercent(task) + '%',
-            backgroundColor: task.color || '#4caf50',
+            left: bucket.left + '%',
+            width: bucket.width + '%',
           }"
         >
-          <!-- Texte de la barre : construit à partir de "Contenu" -->
-          <span class="gantt-label">
-            {{ task.name || 'Tâche' }}
-          </span>
+          {{ bucket.label }}
+        </div>
+      </div>
+
+      <!-- Corps : barres -->
+      <div class="gantt-body">
+        <div v-if="!tasksWithLane.length" class="gantt-empty">
+          Aucune tâche à afficher
+        </div>
+
+        <div v-else>
+          <div
+            v-for="task in tasksWithLane"
+            :key="task.id"
+            class="gantt-bar"
+            :style="{
+              top: topPx(task) + 'px',
+              left: leftPercent(task) + '%',
+              width: widthPercent(task) + '%',
+              backgroundColor: task.color || '#4caf50',
+            }"
+          >
+            <span class="gantt-label">
+              {{ task.name || 'Tâche' }}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -217,13 +259,11 @@ function widthPercent(task: any) {
   white-space: nowrap;
 }
 
-/* Ligne principale : groupBy (Unite) */
 .gantt-lane-group {
   font-weight: 600;
   color: #f9fafb;
 }
 
-/* Sous-ligne : groupBy2 (Personnel) */
 .gantt-lane-sub {
   padding-left: 12px;
   font-size: 11px;
@@ -233,6 +273,37 @@ function widthPercent(task: any) {
 /* Zone de droite */
 .gantt {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* En-tête temporel */
+.gantt-header {
+  position: relative;
+  height: 28px;
+  border-bottom: 1px solid #374151;
+  background-color: #111827;
+  font-size: 10px;
+  color: #9ca3af;
+  overflow: hidden;
+}
+
+.gantt-header-cell {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid #1f2937;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+/* Corps */
+.gantt-body {
+  position: relative;
+  flex: 1;
   overflow: auto;
 }
 

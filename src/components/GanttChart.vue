@@ -126,24 +126,36 @@ const rawMaxDate = computed(() => {
   );
 });
 
-// Bornes affichées selon timeScale
+/**
+ * NOUVELLE LOGIQUE minDate / maxDate
+ * - week    : exactement une semaine LUNDI -> DIMANCHE
+ * - month   : du lundi de la 1ère semaine du mois au dimanche de la dernière semaine du même mois
+ * - quarter : inchangé
+ */
 const minDate = computed(() => {
   const d = new Date(rawMinDate.value);
+
+  // VUE SEMAINE : lundi de la semaine de rawMinDate
   if (timeScale.value === 'week') {
-    const day = d.getDay();
-    const diff = (day === 0 ? -6 : 1) - day;
-    d.setDate(d.getDate() + diff);
+    const day = d.getDay(); // 0 = dimanche, 1 = lundi, ...
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    d.setDate(d.getDate() + diffToMonday);
     d.setHours(0, 0, 0, 0);
     return d;
   }
+
+  // VUE MOIS : lundi de la première semaine qui intersecte le mois de rawMinDate
   if (timeScale.value === 'month') {
+    // Se placer au 1er jour du mois de rawMinDate
     d.setDate(1);
     const day = d.getDay();
-    const diff = (day === 0 ? -6 : 1) - day;
-    d.setDate(d.getDate() + diff);
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    d.setDate(d.getDate() + diffToMonday);
     d.setHours(0, 0, 0, 0);
     return d;
   }
+
+  // VUE TRIMESTRE : inchangée
   const q = Math.floor(d.getMonth() / 3);
   const qStart = new Date(d.getFullYear(), q * 3, 1);
   const day = qStart.getDay();
@@ -155,21 +167,33 @@ const minDate = computed(() => {
 
 const maxDate = computed(() => {
   const d = new Date(rawMaxDate.value);
+
+  // VUE SEMAINE : dimanche de la même semaine que minDate (toujours 7 jours)
   if (timeScale.value === 'week') {
     const day = d.getDay();
-    const diff = 7 - (day === 0 ? 7 : day);
-    d.setDate(d.getDate() + diff);
-    d.setHours(23, 59, 59, 999);
-    return d;
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    const monday = new Date(d);
+    monday.setDate(monday.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    return sunday;
   }
+
+  // VUE MOIS : dimanche de la dernière semaine qui intersecte le même mois
   if (timeScale.value === 'month') {
-    d.setMonth(d.getMonth() + 1, 0);
-    const day = d.getDay();
-    const diff = 7 - (day === 0 ? 7 : day);
-    d.setDate(d.getDate() + diff);
-    d.setHours(23, 59, 59, 999);
-    return d;
+    // Dernier jour du mois de rawMaxDate
+    const lastDayOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const day = lastDayOfMonth.getDay(); // 0 = dimanche, ...
+    const diffToSunday = 7 - (day === 0 ? 7 : day);
+    lastDayOfMonth.setDate(lastDayOfMonth.getDate() + diffToSunday);
+    lastDayOfMonth.setHours(23, 59, 59, 999);
+    return lastDayOfMonth;
   }
+
+  // VUE TRIMESTRE : inchangée
   const q = Math.floor(d.getMonth() / 3);
   const qEnd = new Date(d.getFullYear(), q * 3 + 3, 0);
   const day = qEnd.getDay();
@@ -306,8 +330,7 @@ const monthWeekBuckets = computed<Bucket[]>(() => {
     const weekEnd = new Date(weekStart.getTime() + 6 * oneDay);
     const weekNumber = getIsoWeekNumber(weekStart);
     const left =
-      ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) *
-      100;
+      ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
     const width =
       ((weekEnd.getTime() - weekStart.getTime() + oneDay) / totalMs.value) *
       100;
@@ -397,7 +420,6 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
         >
           Trimestre
         </button>
-        <!-- heure de début de journée maintenant uniquement pilotée par les options -->
       </div>
 
       <!-- En-tête multi-niveaux -->

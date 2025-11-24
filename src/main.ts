@@ -1,13 +1,11 @@
+// src/main.ts
 import { createApp, ref } from 'vue';
 import type { Ref } from 'vue';
 import App from './App.vue';
-
-// import de la fonction (runtime)
 import { initGrist } from './gristBridge';
-
-// import du type uniquement
 import type { Task } from './gristBridge';
 
+// État réactif partagé contenant les tâches issues de Grist
 const tasks: Ref<Task[]> = ref([]);
 
 initGrist((newTasks) => {

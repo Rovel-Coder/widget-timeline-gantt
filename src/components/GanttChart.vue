@@ -12,7 +12,7 @@ const dayStartHour = ref<number>(0);
 // décalage temporel (en nombre de périodes)
 const offset = ref<number>(0);
 
-// ref sur le corps pour le scroll
+// ref sur le corps pour le scroll horizontal
 const bodyRef = ref<HTMLDivElement | null>(null);
 
 declare const grist: any;
@@ -40,7 +40,7 @@ const parsedTasks = computed(() =>
     }),
 );
 
-// 2) Lignes hiérarchiques
+// 2) Lignes hiérarchiques : groupBy -> groupBy2
 type Lane = {
   index: number;
   groupBy: string;
@@ -64,6 +64,7 @@ const lanes = computed<Lane[]>(() => {
   }
 
   for (const [g1, tasks] of byGroup.entries()) {
+    // ligne principale
     result.push({
       index: nextIndex++,
       groupBy: g1,
@@ -72,6 +73,7 @@ const lanes = computed<Lane[]>(() => {
       isGroupHeader: true,
     });
 
+    // sous-lignes
     const seenSub = new Set<string>();
     for (const t of tasks) {
       const g2 = (t.groupBy2 ?? '').toString();
@@ -117,7 +119,7 @@ function topPx(task: any) {
 // 4) Date de référence : aujourd'hui si aucune tâche, sinon min des tâches
 const referenceDate = computed(() => {
   if (!tasksWithLane.value.length) {
-    return new Date(); // pas de tâches → on se base sur aujourd'hui
+    return new Date();
   }
   return new Date(
     Math.min(...tasksWithLane.value.map((t) => t.startDate.getTime())),
@@ -126,9 +128,6 @@ const referenceDate = computed(() => {
 
 /**
  * Bornes de base (sans offset) selon l'échelle
- * - week    : lundi → dimanche de la semaine de referenceDate
- * - month   : 1er → dernier jour du mois de referenceDate
- * - quarter : début/fin du trimestre de referenceDate
  */
 const baseMinDate = computed(() => {
   const d = new Date(referenceDate.value);
@@ -182,21 +181,20 @@ const baseMaxDate = computed(() => {
 });
 
 /**
- * Application de l'offset + extension aux lundis/dimanches pour mois / trimestre
+ * Application de l'offset + extension lundi/dimanche pour mois / trimestre
  */
 const minDate = computed(() => {
   const k = offset.value;
 
   if (timeScale.value === 'week') {
     const d = new Date(baseMinDate.value);
-    d.setDate(d.getDate() + k * 7); // décale d'un nombre de semaines
-    return d; // déjà lundi
+    d.setDate(d.getDate() + k * 7);
+    return d;
   }
 
   if (timeScale.value === 'month') {
-    // 1er jour du mois + offset en mois, puis lundi précédent
     const d = new Date(baseMinDate.value);
-    d.setMonth(d.getMonth() + k);
+    d.setMonth(d.getMonth() + k); // mois précédent / suivant
     const day = d.getDay();
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     d.setDate(d.getDate() + diffToMonday);
@@ -219,12 +217,11 @@ const maxDate = computed(() => {
 
   if (timeScale.value === 'week') {
     const d = new Date(baseMaxDate.value);
-    d.setDate(d.getDate() + k * 7); // décale d'un nombre de semaines
-    return d; // déjà dimanche
+    d.setDate(d.getDate() + k * 7);
+    return d;
   }
 
   if (timeScale.value === 'month') {
-    // fin du mois + offset en mois, puis dimanche suivant
     const d = new Date(baseMaxDate.value);
     d.setMonth(d.getMonth() + k);
     const day = d.getDay(); // 0 = dimanche
@@ -593,7 +590,19 @@ onMounted(async () => {
         <div v-if="!tasksWithLane.length" class="gantt-empty">
           Aucune tâche à afficher
         </div>
-        <div v-else>
+        <div v-else class="gantt-body-inner">
+          <!-- Lignes de fond alignées sur la sidebar -->
+          <div
+            v-for="lane in lanes"
+            :key="'bg-' + lane.index"
+            class="gantt-lane-bg"
+            :style="{
+              top: laneTopPx(lane.index) + 'px',
+              height: laneHeight + 'px'
+            }"
+          ></div>
+
+          <!-- Barres de tâches -->
           <div
             v-for="task in tasksWithLane"
             :key="task.id"
@@ -626,6 +635,7 @@ onMounted(async () => {
   color: #e5e7eb;
 }
 
+/* Colonne de gauche */
 .gantt-sidebar {
   position: relative;
   border-right: 1px solid #374151;
@@ -653,6 +663,7 @@ onMounted(async () => {
   color: #d1d5db;
 }
 
+/* Zone de droite */
 .gantt {
   position: relative;
   display: flex;
@@ -660,6 +671,7 @@ onMounted(async () => {
   height: 100%;
 }
 
+/* Toolbar */
 .gantt-toolbar {
   display: flex;
   align-items: center;
@@ -691,6 +703,7 @@ onMounted(async () => {
   border-color: #2563eb;
 }
 
+/* En-tête multi-lignes */
 .gantt-header {
   position: relative;
   border-bottom: 1px solid #374151;
@@ -724,10 +737,25 @@ onMounted(async () => {
   font-weight: 600;
 }
 
+/* Corps */
 .gantt-body {
   position: relative;
   flex: 1;
   overflow: auto;
+}
+
+.gantt-body-inner {
+  position: relative;
+  min-height: 100%;
+}
+
+/* fond de chaque lane, aligné sur la sidebar */
+.gantt-lane-bg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background-color: #020617;
+  border-top: 1px solid #111827;
 }
 
 .gantt-empty {

@@ -5,9 +5,8 @@ import type { Task } from '../gristBridge';
 
 const props = defineProps<{ tasks: Task[] }>();
 
-// 0) Choix de l'échelle de temps et de l'heure de début de journée (vue semaine)
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
-const dayStartHour = ref<number>(0); // 0 = minuit
+const dayStartHour = ref<number>(0);
 
 // 1) Tâches avec dates JS
 const parsedTasks = computed(() =>
@@ -22,7 +21,7 @@ const parsedTasks = computed(() =>
     }),
 );
 
-// 2) Lignes hiérarchiques : groupBy (Unite) -> groupBy2 (Personnel)
+// 2) Lignes hiérarchiques
 type Lane = {
   index: number;
   groupBy: string;
@@ -46,7 +45,6 @@ const lanes = computed<Lane[]>(() => {
   }
 
   for (const [g1, tasks] of byGroup.entries()) {
-    // ligne principale (Unite)
     result.push({
       index: nextIndex++,
       groupBy: g1,
@@ -55,7 +53,6 @@ const lanes = computed<Lane[]>(() => {
       isGroupHeader: true,
     });
 
-    // sous-lignes (Personnel)
     const seenSub = new Set<string>();
     for (const t of tasks) {
       const g2 = (t.groupBy2 ?? '').toString();
@@ -74,7 +71,6 @@ const lanes = computed<Lane[]>(() => {
   return result;
 });
 
-// 3) Tâches avec laneIndex
 const tasksWithLane = computed(() => {
   const byKey = new Map<string, number>();
   for (const lane of lanes.value) {
@@ -98,7 +94,7 @@ function topPx(task: any) {
   return laneTopPx(task.laneIndex);
 }
 
-// 4) Bornes réelles (basées sur les tâches)
+// 3) Bornes temps (réelles + affichées)
 const rawMinDate = computed(() => {
   if (!tasksWithLane.value.length) return new Date();
   return new Date(
@@ -112,12 +108,11 @@ const rawMaxDate = computed(() => {
   );
 });
 
-// Bornes affichées selon timeScale
 const minDate = computed(() => {
   const d = new Date(rawMinDate.value);
   if (timeScale.value === 'week') {
-    const day = d.getDay(); // 0 = dimanche
-    const diff = (day === 0 ? -6 : 1) - day; // jusqu'au lundi
+    const day = d.getDay();
+    const diff = (day === 0 ? -6 : 1) - day;
     d.setDate(d.getDate() + diff);
     d.setHours(0, 0, 0, 0);
     return d;
@@ -143,13 +138,13 @@ const maxDate = computed(() => {
   const d = new Date(rawMaxDate.value);
   if (timeScale.value === 'week') {
     const day = d.getDay();
-    const diff = 7 - (day === 0 ? 7 : day); // jusqu'au dimanche
+    const diff = 7 - (day === 0 ? 7 : day);
     d.setDate(d.getDate() + diff);
     d.setHours(23, 59, 59, 999);
     return d;
   }
   if (timeScale.value === 'month') {
-    d.setMonth(d.getMonth() + 1, 0); // dernier jour du mois
+    d.setMonth(d.getMonth() + 1, 0);
     const day = d.getDay();
     const diff = 7 - (day === 0 ? 7 : day);
     d.setDate(d.getDate() + diff);
@@ -185,99 +180,163 @@ function widthPercent(task: any) {
   );
 }
 
-// 5) Grille temporelle selon l'échelle choisie
-type TimeBucket = {
-  start: Date;
-  label: string;
-  left: number;
-  width: number;
-};
+// 4) Buckets pour les deux lignes d'en-tête
+type Bucket = { left: number; width: number; label: string };
 
-const timeBuckets = computed<TimeBucket[]>(() => {
-  const buckets: TimeBucket[] = [];
-  if (!tasksWithLane.value.length) return buckets;
-
+// semaine : ligne1 semaines, ligne2 jours
+const weekWeekBuckets = computed<Bucket[]>(() => {
+  const res: Bucket[] = [];
+  if (timeScale.value !== 'week') return res;
   const start = new Date(minDate.value);
   const end = new Date(maxDate.value);
-  const oneDayMs = 24 * 60 * 60 * 1000;
+  const oneDay = 24 * 60 * 60 * 1000;
 
-  if (timeScale.value === 'week') {
-    // Une case par jour, label court "lun 24", "mar 25", etc.
-    let ts = start.getTime();
-    while (ts <= end.getTime()) {
-      const base = new Date(ts);
-      const bucketStart = new Date(base);
-      bucketStart.setHours(dayStartHour.value, 0, 0, 0);
-
-      const label = bucketStart.toLocaleDateString('fr-FR', {
-        weekday: 'short',
-        day: '2-digit',
-      });
-
-      const left =
-        ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
-        100;
-      const width = (oneDayMs / totalMs.value) * 100;
-
-      buckets.push({ start: bucketStart, label, left, width });
-      ts += oneDayMs;
-    }
-  } else if (timeScale.value === 'month') {
-    // semaines complètes couvrant le mois
-    let weekStart = new Date(start);
-    while (weekStart <= end) {
-      const weekEnd = new Date(weekStart.getTime() + 6 * oneDayMs);
-
-      const monthLabel = weekStart.toLocaleDateString('fr-FR', {
-        month: 'short',
-      });
-      const label = monthLabel;
-
-      const left =
-        ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) *
-        100;
-      const width =
-        ((weekEnd.getTime() - weekStart.getTime() + oneDayMs) /
-          totalMs.value) *
-        100;
-
-      buckets.push({ start: weekStart, label, left, width });
-      weekStart = new Date(weekStart.getTime() + 7 * oneDayMs);
-    }
-  } else {
-    // quarter : un bucket par mois
-    const d = new Date(start);
-    d.setDate(1);
-    while (d <= end) {
-      const bucketStart = new Date(d);
-      const bucketEnd = new Date(d);
-      bucketEnd.setMonth(bucketEnd.getMonth() + 1, 0);
-
-      const label = bucketStart.toLocaleDateString('fr-FR', {
-        month: 'short',
-        year: '2-digit',
-      });
-
-      const left =
-        ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
-        100;
-      const width =
-        ((bucketEnd.getTime() - bucketStart.getTime() + oneDayMs) /
-          totalMs.value) *
-        100;
-
-      buckets.push({ start: bucketStart, label, left, width });
-      d.setMonth(d.getMonth() + 1, 1);
-    }
+  let weekStart = new Date(start);
+  while (weekStart <= end) {
+    const weekEnd = new Date(weekStart.getTime() + 6 * oneDay);
+    const weekNumber = getIsoWeekNumber(weekStart);
+    const left =
+      ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
+    const width =
+      ((weekEnd.getTime() - weekStart.getTime() + oneDay) / totalMs.value) *
+      100;
+    res.push({ left, width, label: `S${weekNumber}` });
+    weekStart = new Date(weekStart.getTime() + 7 * oneDay);
   }
-
-  return buckets;
+  return res;
 });
+
+const weekDayBuckets = computed<Bucket[]>(() => {
+  const res: Bucket[] = [];
+  if (timeScale.value !== 'week') return res;
+  const start = new Date(minDate.value);
+  const end = new Date(maxDate.value);
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDay) {
+    const d = new Date(ts);
+    const bucketStart = new Date(d);
+    bucketStart.setHours(dayStartHour.value, 0, 0, 0);
+    const label = bucketStart.toLocaleDateString('fr-FR', {
+      weekday: 'short',
+      day: '2-digit',
+    });
+    const left =
+      ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
+      100;
+    const width = (oneDay / totalMs.value) * 100;
+    res.push({ left, width, label });
+  }
+  return res;
+});
+
+// mois : ligne1 mois, ligne2 semaines
+const monthMonthBuckets = computed<Bucket[]>(() => {
+  const res: Bucket[] = [];
+  if (timeScale.value !== 'month') return res;
+  const start = new Date(minDate.value);
+  const end = new Date(maxDate.value);
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  const d = new Date(start);
+  d.setDate(1);
+  while (d <= end) {
+    const monthStart = new Date(d);
+    const monthEnd = new Date(d);
+    monthEnd.setMonth(monthEnd.getMonth() + 1, 0);
+
+    const label = monthStart.toLocaleDateString('fr-FR', {
+      month: 'short',
+      year: '2-digit',
+    });
+
+    const left =
+      ((monthStart.getTime() - minDate.value.getTime()) / totalMs.value) *
+      100;
+    const width =
+      ((monthEnd.getTime() - monthStart.getTime() + oneDay) /
+        totalMs.value) *
+      100;
+
+    res.push({ left, width, label });
+    d.setMonth(d.getMonth() + 1, 1);
+  }
+  return res;
+});
+
+const monthWeekBuckets = computed<Bucket[]>(() => {
+  const res: Bucket[] = [];
+  if (timeScale.value !== 'month') return res;
+  const start = new Date(minDate.value);
+  const end = new Date(maxDate.value);
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  let weekStart = new Date(start);
+  while (weekStart <= end) {
+    const weekEnd = new Date(weekStart.getTime() + 6 * oneDay);
+    const weekNumber = getIsoWeekNumber(weekStart);
+    const left =
+      ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) *
+      100;
+    const width =
+      ((weekEnd.getTime() - weekStart.getTime() + oneDay) / totalMs.value) *
+      100;
+    res.push({ left, width, label: `S${weekNumber}` });
+    weekStart = new Date(weekStart.getTime() + 7 * oneDay);
+  }
+  return res;
+});
+
+// trimestre : une seule ligne de mois
+const quarterMonthBuckets = computed<Bucket[]>(() => {
+  const res: Bucket[] = [];
+  if (timeScale.value !== 'quarter') return res;
+  const start = new Date(minDate.value);
+  const end = new Date(maxDate.value);
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  const d = new Date(start);
+  d.setDate(1);
+  while (d <= end) {
+    const monthStart = new Date(d);
+    const monthEnd = new Date(d);
+    monthEnd.setMonth(monthEnd.getMonth() + 1, 0);
+
+    const label = monthStart.toLocaleDateString('fr-FR', {
+      month: 'short',
+      year: '2-digit',
+    });
+
+    const left =
+      ((monthStart.getTime() - minDate.value.getTime()) / totalMs.value) *
+      100;
+    const width =
+      ((monthEnd.getTime() - monthStart.getTime() + oneDay) /
+        totalMs.value) *
+      100;
+
+    res.push({ left, width, label });
+    d.setMonth(d.getMonth() + 1, 1);
+  }
+  return res;
+});
+
+// utilitaire : numéro de semaine ISO
+function getIsoWeekNumber(date: Date): number {
+  const tmp = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
+  const dayNum = tmp.getUTCDay() || 7;
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((+tmp - +yearStart) / 86400000 + 1) / 7);
+  return weekNo;
+}
 </script>
 
 <template>
   <div class="gantt-wrapper">
-    <!-- Colonne de gauche : Unite + Personnel -->
+    <!-- Colonne de gauche -->
     <div class="gantt-sidebar">
       <div v-if="!lanes.length" class="gantt-empty">
         Aucune tâche
@@ -297,9 +356,8 @@ const timeBuckets = computed<TimeBucket[]>(() => {
       </div>
     </div>
 
-    <!-- Zone de droite : toolbar + en-tête + barres -->
+    <!-- Zone de droite -->
     <div class="gantt">
-      <!-- Toolbar échelle de temps + début de journée -->
       <div class="gantt-toolbar">
         <button
           class="gantt-btn"
@@ -337,27 +395,82 @@ const timeBuckets = computed<TimeBucket[]>(() => {
         </label>
       </div>
 
-      <!-- En-tête temporel -->
-      <div class="gantt-header" v-if="timeBuckets.length">
-        <div
-          v-for="bucket in timeBuckets"
-          :key="bucket.label + bucket.left"
-          class="gantt-header-cell"
-          :style="{
-            left: bucket.left + '%',
-            width: bucket.width + '%',
-          }"
-        >
-          {{ bucket.label }}
+      <!-- En-tête multi-niveaux -->
+      <div class="gantt-header">
+        <!-- Ligne 1 -->
+        <div class="gantt-header-row">
+          <!-- Semaine : numéros de semaine -->
+          <template v-if="timeScale === 'week'">
+            <div
+              v-for="b in weekWeekBuckets"
+              :key="'ww-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+
+          <!-- Mois : noms de mois -->
+          <template v-else-if="timeScale === 'month'">
+            <div
+              v-for="b in monthMonthBuckets"
+              :key="'mm-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+
+          <!-- Trimestre : mois -->
+          <template v-else>
+            <div
+              v-for="b in quarterMonthBuckets"
+              :key="'qm-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+        </div>
+
+        <!-- Ligne 2 -->
+        <div class="gantt-header-row">
+          <!-- Semaine : jours -->
+          <template v-if="timeScale === 'week'">
+            <div
+              v-for="b in weekDayBuckets"
+              :key="'wd-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+
+          <!-- Mois : semaines -->
+          <template v-else-if="timeScale === 'month'">
+            <div
+              v-for="b in monthWeekBuckets"
+              :key="'mw-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+
+          <!-- Trimestre : pas de deuxième ligne -->
         </div>
       </div>
 
-      <!-- Corps : barres -->
+      <!-- Corps -->
       <div class="gantt-body">
         <div v-if="!tasksWithLane.length" class="gantt-empty">
           Aucune tâche à afficher
         </div>
-
         <div v-else>
           <div
             v-for="task in tasksWithLane"
@@ -391,7 +504,6 @@ const timeBuckets = computed<TimeBucket[]>(() => {
   color: #e5e7eb;
 }
 
-/* Colonne de gauche */
 .gantt-sidebar {
   position: relative;
   border-right: 1px solid #374151;
@@ -419,7 +531,6 @@ const timeBuckets = computed<TimeBucket[]>(() => {
   color: #d1d5db;
 }
 
-/* Zone de droite */
 .gantt {
   position: relative;
   display: flex;
@@ -469,14 +580,19 @@ const timeBuckets = computed<TimeBucket[]>(() => {
   padding: 1px 4px;
 }
 
-/* En-tête temporel */
+/* En-tête multi-lignes */
 .gantt-header {
   position: relative;
-  height: 28px;
   border-bottom: 1px solid #374151;
   background-color: #111827;
-  font-size: 10px;
   color: #9ca3af;
+  font-size: 10px;
+}
+
+.gantt-header-row {
+  position: relative;
+  height: 18px;
+  border-bottom: 1px solid #111827;
   overflow: hidden;
 }
 

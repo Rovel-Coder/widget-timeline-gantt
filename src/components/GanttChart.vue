@@ -21,6 +21,8 @@ const toolbarHeight = 24;
 const headerRowHeight = 18;
 const headerHeight = headerRowHeight * 2;
 const lanesTopOffset = toolbarHeight + headerHeight;
+// hauteur relative de chaque "étage" dans une lane
+const subRowHeightFactor = 0.8;
 
 const offset = ref<number>(0);
 
@@ -39,6 +41,7 @@ if (typeof grist !== 'undefined') {
   });
 }
 
+// 1) Tâches avec dates JS
 const parsedTasks = computed(() =>
   props.tasks
     .filter((t) => t.start && t.duration != null)
@@ -53,6 +56,7 @@ const parsedTasks = computed(() =>
     }),
 );
 
+// 2) Lanes hiérarchiques
 type Lane = {
   index: number;
   groupBy: string;
@@ -99,6 +103,7 @@ const lanes = computed<Lane[]>(() => {
   return result;
 });
 
+// 3) Tâches avec laneIndex + subRowIndex (empilement des chevauchements)
 const tasksWithLane = computed(() => {
   const byKey = new Map<string, number>();
   for (const lane of lanes.value) {
@@ -106,23 +111,72 @@ const tasksWithLane = computed(() => {
     byKey.set(key, lane.index);
   }
 
-  return parsedTasks.value.map((t) => {
+  const base = parsedTasks.value.map((t) => {
     const g1 = (t.groupBy ?? '').toString();
     const g2 = (t.groupBy2 ?? '').toString();
     const key = `${g1}||${g2}`;
     const laneIndex = byKey.get(key) ?? 0;
     return { ...t, laneIndex };
   });
+
+  type TaskWithRow = (typeof base)[number] & { subRowIndex: number };
+  const result: TaskWithRow[] = [];
+
+  const byLane = new Map<number, typeof base>();
+  for (const t of base) {
+    if (!byLane.has(t.laneIndex)) byLane.set(t.laneIndex, []);
+    byLane.get(t.laneIndex)!.push(t);
+  }
+
+  for (const [, tasks] of byLane.entries()) {
+  const sorted = [...tasks].sort(
+    (a, b) => a.startDate.getTime() - b.startDate.getTime(),
+  );
+
+  const rows: { tasks: { start: number; end: number }[] }[] = [];
+
+
+    for (const t of sorted) {
+      const start = t.startDate.getTime();
+      const end = t.endDate.getTime();
+
+      let placed = false;
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.tasks.length === 0) continue;
+        const last = row.tasks[row.tasks.length - 1];
+        if (!last) continue;
+
+        if (start >= last.end) {
+          row.tasks.push({ start, end });
+          result.push({ ...t, subRowIndex: i });
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) {
+        const newRow = { tasks: [{ start, end }] };
+        rows.push(newRow);
+        const newIndex = rows.length - 1;
+        result.push({ ...t, subRowIndex: newIndex });
+      }
+    }
+  }
+
+  return result;
 });
 
 function laneTopPx(laneIndex: number) {
   return lanesTopOffset + laneGap + laneIndex * (laneHeight + laneGap);
 }
 function topPx(task: any) {
-  return laneTopPx(task.laneIndex);
+  const baseTop = laneTopPx(task.laneIndex);
+  const subOffset = task.subRowIndex * (laneHeight * subRowHeightFactor);
+  return baseTop + subOffset;
 }
 
-// Dates / échelles
+// 4) Dates / échelles
 const referenceDate = computed(() => {
   if (!tasksWithLane.value.length) {
     return new Date();
@@ -488,16 +542,18 @@ function onBodyScroll(e: Event) {
           Aucune tâche à afficher
         </div>
         <div v-else class="gantt-body-inner">
+          <!-- fond des lanes, assez haut pour 3 étages -->
           <div
             v-for="lane in lanes"
             :key="'bg-' + lane.index"
             class="gantt-lane-bg"
             :style="{
               top: laneTopPx(lane.index) + 'px',
-              height: laneHeight + 'px'
+              height: laneHeight * 3 + 'px'
             }"
           ></div>
 
+          <!-- Barres de tâches (avec empilement) -->
           <div
             v-for="task in tasksWithLane"
             :key="task.id"

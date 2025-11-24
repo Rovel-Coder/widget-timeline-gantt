@@ -27,16 +27,18 @@ const props = defineProps<{
       Aucune tâche
     </div>
     <div v-else class="gantt-sidebar-inner">
+      <!-- fond des lanes (assez haut pour plusieurs étages) -->
       <div
         v-for="lane in props.lanes"
         :key="'sbg-' + lane.index"
         class="gantt-lane-bg-sidebar"
         :style="{
           top: props.laneTopFn(lane.index) + 'px',
-          height: props.laneHeight + 'px'
+          height: props.laneHeight * 3 + 'px'
         }"
       ></div>
 
+      <!-- labels -->
       <div
         v-for="lane in props.lanes"
         :key="lane.index"

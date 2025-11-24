@@ -5,26 +5,22 @@ import type { Task } from '../gristBridge';
 
 const props = defineProps<{ tasks: Task[] }>();
 
-// échelle de temps
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
-// heure de début de journée (panneau Grist)
 const dayStartHour = ref<number>(0);
 
-// géométrie verticale
 const laneHeight = 24;
 const laneGap = 4;
-const headerHeight = 32; // doit matcher la hauteur de la barre du haut à droite
+// hauteur totale de l’en-tête de droite: 2 lignes * 18px = 36
+const headerRowHeight = 18;
+const headerHeight = headerRowHeight * 2;
 
-// décalage temporel
 const offset = ref<number>(0);
 
-// refs pour scroll
 const bodyRef = ref<HTMLDivElement | null>(null);
 const sidebarRef = ref<HTMLDivElement | null>(null);
 
 declare const grist: any;
 
-// Lecture des options du widget (on garde uniquement dayStartHour)
 if (typeof grist !== 'undefined') {
   grist.onOptions((options: any) => {
     if (options && typeof options.dayStartHour === 'number') {
@@ -35,7 +31,6 @@ if (typeof grist !== 'undefined') {
   });
 }
 
-// 1) Tâches avec dates JS (duration en HEURES → conversion en jours)
 const parsedTasks = computed(() =>
   props.tasks
     .filter((t) => t.start && t.duration != null)
@@ -50,7 +45,6 @@ const parsedTasks = computed(() =>
     }),
 );
 
-// 2) Lignes hiérarchiques : groupBy -> groupBy2
 type Lane = {
   index: number;
   groupBy: string;
@@ -71,7 +65,6 @@ const lanes = computed<Lane[]>(() => {
   }
 
   for (const [g1, tasks] of byGroup.entries()) {
-    // ligne principale
     result.push({
       index: nextIndex++,
       groupBy: g1,
@@ -80,7 +73,6 @@ const lanes = computed<Lane[]>(() => {
       isGroupHeader: true,
     });
 
-    // sous-lignes
     const seenSub = new Set<string>();
     for (const t of tasks) {
       const g2 = (t.groupBy2 ?? '').toString();
@@ -99,7 +91,6 @@ const lanes = computed<Lane[]>(() => {
   return result;
 });
 
-// 3) Tâches avec laneIndex
 const tasksWithLane = computed(() => {
   const byKey = new Map<string, number>();
   for (const lane of lanes.value) {
@@ -123,7 +114,6 @@ function topPx(task: any) {
   return laneTopPx(task.laneIndex);
 }
 
-// 4) Dates / échelles
 const referenceDate = computed(() => {
   if (!tasksWithLane.value.length) {
     return new Date();
@@ -137,7 +127,7 @@ const baseMinDate = computed(() => {
   const d = new Date(referenceDate.value);
 
   if (timeScale.value === 'week') {
-    const day = d.getDay(); // 0 = dimanche, 1 = lundi...
+    const day = d.getDay();
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     d.setDate(d.getDate() + diffToMonday);
     d.setHours(0, 0, 0, 0);
@@ -254,7 +244,6 @@ function widthPercent(task: any) {
   );
 }
 
-// utilitaire : numéro de semaine ISO
 function getIsoWeekNumber(date: Date): number {
   const tmp = new Date(
     Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
@@ -266,7 +255,6 @@ function getIsoWeekNumber(date: Date): number {
   return weekNo;
 }
 
-// Buckets
 type Bucket = { left: number; width: number; label: string; date?: Date };
 
 const weekWeekBuckets = computed<Bucket[]>(() => {
@@ -401,7 +389,6 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// Navigation
 function goPrev() {
   offset.value -= 1;
 }
@@ -412,7 +399,6 @@ function resetOffset() {
   offset.value = 0;
 }
 
-// Centrage auto sur "aujourd'hui"
 onMounted(async () => {
   await nextTick();
 
@@ -438,7 +424,6 @@ onMounted(async () => {
     offsetLeft - body.clientWidth / 2 + todayCell.offsetWidth / 2;
 });
 
-// Scroll vertical synchronisé sidebar <-> corps
 function onBodyScroll(e: Event) {
   const body = e.target as HTMLDivElement;
   if (sidebarRef.value) {
@@ -451,16 +436,16 @@ function onBodyScroll(e: Event) {
   <div class="gantt-wrapper">
     <!-- Colonne de gauche -->
     <div class="gantt-sidebar" ref="sidebarRef">
-      <!-- carré invisible, même hauteur que l'en-tête de droite -->
-      <div class="gantt-logo-area">
-        <div class="gantt-logo-placeholder"></div>
+      <!-- Faux header gauche, 2 lignes de rectangles comme la timeline -->
+      <div class="gantt-sidebar-header">
+        <div class="gantt-sidebar-header-row"></div>
+        <div class="gantt-sidebar-header-row"></div>
       </div>
 
       <div v-if="!lanes.length" class="gantt-empty">
         Aucune tâche
       </div>
       <div v-else class="gantt-sidebar-inner">
-        <!-- fond des lanes côté sidebar -->
         <div
           v-for="lane in lanes"
           :key="'sbg-' + lane.index"
@@ -471,7 +456,6 @@ function onBodyScroll(e: Event) {
           }"
         ></div>
 
-        <!-- labels -->
         <div
           v-for="lane in lanes"
           :key="lane.index"
@@ -493,20 +477,12 @@ function onBodyScroll(e: Event) {
     <!-- Zone de droite -->
     <div class="gantt">
       <div class="gantt-toolbar">
-        <!-- Navigation -->
-        <button class="gantt-btn" @click="goPrev">
-          ◀
-        </button>
-        <button class="gantt-btn" @click="resetOffset">
-          Aujourd'hui
-        </button>
-        <button class="gantt-btn" @click="goNext">
-          ▶
-        </button>
+        <button class="gantt-btn" @click="goPrev">◀</button>
+        <button class="gantt-btn" @click="resetOffset">Aujourd'hui</button>
+        <button class="gantt-btn" @click="goNext">▶</button>
 
         <div class="gantt-toolbar-sep" />
 
-        <!-- Sélecteur d'échelle -->
         <button
           class="gantt-btn"
           :class="{ 'is-active': timeScale === 'week' }"
@@ -530,9 +506,7 @@ function onBodyScroll(e: Event) {
         </button>
       </div>
 
-      <!-- En-tête multi-niveaux -->
       <div class="gantt-header">
-        <!-- Ligne 1 -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -568,7 +542,6 @@ function onBodyScroll(e: Event) {
           </template>
         </div>
 
-        <!-- Ligne 2 -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -599,13 +572,11 @@ function onBodyScroll(e: Event) {
         </div>
       </div>
 
-      <!-- Corps -->
       <div class="gantt-body" ref="bodyRef" @scroll="onBodyScroll">
         <div v-if="!tasksWithLane.length" class="gantt-empty">
           Aucune tâche à afficher
         </div>
         <div v-else class="gantt-body-inner">
-          <!-- Lignes de fond alignées sur la sidebar -->
           <div
             v-for="lane in lanes"
             :key="'bg-' + lane.index"
@@ -616,7 +587,6 @@ function onBodyScroll(e: Event) {
             }"
           ></div>
 
-          <!-- Barres de tâches -->
           <div
             v-for="task in tasksWithLane"
             :key="task.id"
@@ -649,38 +619,30 @@ function onBodyScroll(e: Event) {
   color: #e5e7eb;
 }
 
-/* Colonne de gauche */
 .gantt-sidebar {
   position: relative;
   border-right: 1px solid #374151;
   overflow: hidden;
 }
 
-/* Zone « logo » en haut — sert juste d’espace vide */
-.gantt-logo-area {
-  height: 32px; /* même hauteur que barre du haut de droite */
-  border-bottom: 1px solid #1f2937;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #020617;
+/* Fausse zone d’en-tête à gauche, 2 lignes comme la timeline */
+.gantt-sidebar-header {
+  height: 36px; /* 2 * 18px */
+  border-bottom: 1px solid #374151;
+  background-color: #111827;
 }
 
-/* carré invisible qui occupe l’espace */
-.gantt-logo-placeholder {
-  width: 120px;
-  height: 20px;
-  border-radius: 4px;
-  /* aucune bordure, aucune couleur -> vraiment invisible */
+.gantt-sidebar-header-row {
+  height: 18px;
+  border-bottom: 1px solid #111827;
+  background-color: #020617;
 }
 
-/* sidebar */
 .gantt-sidebar-inner {
   position: relative;
   min-height: 100%;
 }
 
-/* fond des lanes côté sidebar */
 .gantt-lane-bg-sidebar {
   position: absolute;
   left: 0;
@@ -711,7 +673,6 @@ function onBodyScroll(e: Event) {
   color: #d1d5db;
 }
 
-/* Zone de droite */
 .gantt {
   position: relative;
   display: flex;
@@ -719,7 +680,6 @@ function onBodyScroll(e: Event) {
   height: 100%;
 }
 
-/* Toolbar */
 .gantt-toolbar {
   display: flex;
   align-items: center;
@@ -751,7 +711,6 @@ function onBodyScroll(e: Event) {
   border-color: #2563eb;
 }
 
-/* En-tête multi-lignes */
 .gantt-header {
   position: relative;
   border-bottom: 1px solid #374151;
@@ -778,14 +737,12 @@ function onBodyScroll(e: Event) {
   white-space: nowrap;
 }
 
-/* surlignage du jour courant */
 .gantt-header-cell.is-today {
   background-color: #1d4ed8;
   color: #f9fafb;
   font-weight: 600;
 }
 
-/* Corps */
 .gantt-body {
   position: relative;
   flex: 1;
@@ -797,7 +754,6 @@ function onBodyScroll(e: Event) {
   min-height: 100%;
 }
 
-/* fond de chaque lane, aligné sur la sidebar */
 .gantt-lane-bg {
   position: absolute;
   left: 0;

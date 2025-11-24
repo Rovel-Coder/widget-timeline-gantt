@@ -98,19 +98,71 @@ function topPx(task: any) {
   return laneTopPx(task.laneIndex);
 }
 
-// 4) Échelle de temps commune
-const minDate = computed(() => {
+// 4) Bornes réelles (basées sur les tâches)
+const rawMinDate = computed(() => {
   if (!tasksWithLane.value.length) return new Date();
   return new Date(
     Math.min(...tasksWithLane.value.map((t) => t.startDate.getTime())),
   );
 });
-
-const maxDate = computed(() => {
+const rawMaxDate = computed(() => {
   if (!tasksWithLane.value.length) return new Date();
   return new Date(
     Math.max(...tasksWithLane.value.map((t) => t.endDate.getTime())),
   );
+});
+
+// Bornes affichées selon timeScale
+const minDate = computed(() => {
+  const d = new Date(rawMinDate.value);
+  if (timeScale.value === 'week') {
+    const day = d.getDay(); // 0 = dimanche
+    const diff = (day === 0 ? -6 : 1) - day; // jusqu'au lundi
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  if (timeScale.value === 'month') {
+    d.setDate(1);
+    const day = d.getDay();
+    const diff = (day === 0 ? -6 : 1) - day;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  const q = Math.floor(d.getMonth() / 3);
+  const qStart = new Date(d.getFullYear(), q * 3, 1);
+  const day = qStart.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  qStart.setDate(qStart.getDate() + diff);
+  qStart.setHours(0, 0, 0, 0);
+  return qStart;
+});
+
+const maxDate = computed(() => {
+  const d = new Date(rawMaxDate.value);
+  if (timeScale.value === 'week') {
+    const day = d.getDay();
+    const diff = 7 - (day === 0 ? 7 : day); // jusqu'au dimanche
+    d.setDate(d.getDate() + diff);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }
+  if (timeScale.value === 'month') {
+    d.setMonth(d.getMonth() + 1, 0); // dernier jour du mois
+    const day = d.getDay();
+    const diff = 7 - (day === 0 ? 7 : day);
+    d.setDate(d.getDate() + diff);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }
+  const q = Math.floor(d.getMonth() / 3);
+  const qEnd = new Date(d.getFullYear(), q * 3 + 3, 0);
+  const day = qEnd.getDay();
+  const diff = 7 - (day === 0 ? 7 : day);
+  qEnd.setDate(qEnd.getDate() + diff);
+  qEnd.setHours(23, 59, 59, 999);
+  return qEnd;
 });
 
 const totalMs = computed(() => {
@@ -133,6 +185,18 @@ function widthPercent(task: any) {
   );
 }
 
+// utilitaire : numéro de semaine ISO
+function getIsoWeekNumber(date: Date): number {
+  const tmp = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
+  const dayNum = tmp.getUTCDay() || 7;
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((+tmp - +yearStart) / 86400000 + 1) / 7);
+  return weekNo;
+}
+
 // 5) Grille temporelle selon l'échelle choisie
 type TimeBucket = {
   start: Date;
@@ -146,25 +210,19 @@ const timeBuckets = computed<TimeBucket[]>(() => {
   if (!tasksWithLane.value.length) return buckets;
 
   const start = new Date(minDate.value);
-  start.setHours(0, 0, 0, 0);
   const end = new Date(maxDate.value);
-  end.setHours(23, 59, 59, 999);
-
   const oneDayMs = 24 * 60 * 60 * 1000;
 
   if (timeScale.value === 'week') {
-    // 1 case = 1 jour, centré sur dayStartHour
-    for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDayMs) {
+    // semaine complète lundi -> dimanche
+    let ts = start.getTime();
+    while (ts <= end.getTime()) {
       const base = new Date(ts);
       const bucketStart = new Date(base);
       bucketStart.setHours(dayStartHour.value, 0, 0, 0);
 
-      const label = bucketStart.toLocaleDateString('fr-FR', {
-        weekday: 'short',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      const weekNumber = getIsoWeekNumber(bucketStart);
+      const label = `S${weekNumber}`;
 
       const left =
         ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
@@ -172,41 +230,55 @@ const timeBuckets = computed<TimeBucket[]>(() => {
       const width = (oneDayMs / totalMs.value) * 100;
 
       buckets.push({ start: bucketStart, label, left, width });
+      ts += oneDayMs;
     }
   } else if (timeScale.value === 'month') {
-    // 1 case = 1 semaine
-    for (let ts = start.getTime(); ts <= end.getTime(); ts += 7 * oneDayMs) {
-      const d = new Date(ts);
-      const label = d.toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
+    // semaines complètes couvrant le mois
+    let weekStart = new Date(start);
+    while (weekStart <= end) {
+      const weekEnd = new Date(weekStart.getTime() + 6 * oneDayMs);
+
+      const weekNumber = getIsoWeekNumber(weekStart);
+      const monthLabel = weekStart.toLocaleDateString('fr-FR', {
+        month: 'short',
       });
+      const label = `S${weekNumber} (${monthLabel})`;
+
       const left =
-        ((d.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
-      const width = ((7 * oneDayMs) / totalMs.value) * 100;
-      buckets.push({ start: d, label, left, width });
+        ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) *
+        100;
+      const width =
+        ((weekEnd.getTime() - weekStart.getTime() + oneDayMs) /
+          totalMs.value) *
+        100;
+
+      buckets.push({ start: weekStart, label, left, width });
+      weekStart = new Date(weekStart.getTime() + 7 * oneDayMs);
     }
   } else {
-    // 'quarter' : 1 case = 1 mois
+    // quarter : un bucket par mois
     const d = new Date(start);
     d.setDate(1);
     while (d <= end) {
-      const label = d.toLocaleDateString('fr-FR', {
+      const bucketStart = new Date(d);
+      const bucketEnd = new Date(d);
+      bucketEnd.setMonth(bucketEnd.getMonth() + 1, 0);
+
+      const label = bucketStart.toLocaleDateString('fr-FR', {
         month: 'short',
         year: '2-digit',
       });
-      const bucketStart = new Date(d);
-      const bucketEnd = new Date(d);
-      bucketEnd.setMonth(bucketEnd.getMonth() + 1);
 
       const left =
         ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
         100;
       const width =
-        ((bucketEnd.getTime() - bucketStart.getTime()) / totalMs.value) * 100;
+        ((bucketEnd.getTime() - bucketStart.getTime() + oneDayMs) /
+          totalMs.value) *
+        100;
 
       buckets.push({ start: bucketStart, label, left, width });
-      d.setMonth(d.getMonth() + 1);
+      d.setMonth(d.getMonth() + 1, 1);
     }
   }
 

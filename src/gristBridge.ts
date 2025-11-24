@@ -55,21 +55,16 @@ export function initGrist(onTasksChange: (tasks: Task[]) => void) {
       return;
     }
 
-    // Colonnes choisies dans "Contenu" (dans l'ordre de sélection)
-    const contentCols: string[] = mappings?.contentCols ?? [];
-
     const tasks: Task[] = mappedRecords.map((r: any) => {
-      // 1) Construire le texte à partir des colonnes de "Contenu"
-      const parts: string[] = [];
-      for (const colId of contentCols) {
-        const val = r[colId];
-        if (val !== undefined && val !== null && val !== '') {
-          parts.push(String(val));
-        }
-      }
+      // r.contentCols contient déjà les valeurs des colonnes choisies dans "Contenu"
+      const parts: string[] = Array.isArray(r.contentCols)
+        ? r.contentCols
+            .filter((v: any) => v !== null && v !== undefined && v !== '')
+            .map(String)
+        : [];
+
       const content = parts.join(' - ');  // séparateur "-"
 
-      // 2) Retomber sur Titre/Name si "Contenu" n'est pas rempli
       const fallbackName = r.Titre ?? r.Name ?? '';
 
       return {

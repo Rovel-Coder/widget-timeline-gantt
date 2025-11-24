@@ -27,13 +27,16 @@ type Lane = {
   isGroupHeader: boolean;
 };
 
-// géométrie de base
-const baseLaneHeight = 24;          // hauteur d'une ligne (task/personne)
-const laneGap = 10;                 // ESPACE entre les lignes
-const toolbarHeight = 25;           // ligne des boutons
-const headerRowHeight = 25;         // chaque ligne du header
-const headerHeight = headerRowHeight * 3; // 3 lignes (vue Semaine/Mois/Trimestre)
-const lanesTopOffset = toolbarHeight + headerHeight; // 25 + 75 = 100
+// géométrie
+const baseLaneHeight = 24;              // hauteur d'un étage
+const laneOuterGap = 5;                 // espace entre 2 lanes
+const subRowGap = 2.5;                  // espace interne entre étages
+const headerToFirstLaneGap = 10;        // entre header et 1re lane
+
+const toolbarHeight = 25;
+const headerRowHeight = 25;
+const headerHeight = headerRowHeight * 3; // 3 lignes
+const lanesTopOffset = toolbarHeight + headerHeight + headerToFirstLaneGap;
 
 const offset = ref<number>(0);
 
@@ -184,26 +187,31 @@ const laneRowCount = computed<Record<number, number>>(() => {
   return map;
 });
 
-// hauteur réelle d’une lane
+// hauteur réelle d’une lane (tous les étages + gaps internes)
 function laneHeightFor(laneIndex: number): number {
   const rows = laneRowCount.value[laneIndex] ?? 1;
-  return baseLaneHeight * rows;
+  if (rows <= 1) return baseLaneHeight;
+  return rows * baseLaneHeight + (rows - 1) * subRowGap;
 }
 
-// top d’une lane (somme des hauteurs précédentes + gaps)
+// top d’une lane (somme des hauteurs précédentes + gaps externes)
 function laneTopPx(laneIndex: number) {
   let top = lanesTopOffset;
   for (let i = 0; i < laneIndex; i++) {
-    top += laneHeightFor(i) + laneGap;
+    top += laneHeightFor(i) + laneOuterGap;
   }
   return top;
 }
 
-// top d’une barre
+// top d’une barre (empilement interne)
 function topPx(task: TaskWithLane) {
   const laneTop = laneTopPx(task.laneIndex);
-  const rowH = baseLaneHeight;
-  return laneTop + task.subRowIndex * rowH;
+  const rowIndex = task.subRowIndex ?? 0;
+
+  if (rowIndex === 0) {
+    return laneTop;
+  }
+  return laneTop + rowIndex * (baseLaneHeight + subRowGap);
 }
 
 // 4) Dates / échelles
@@ -591,7 +599,7 @@ function onBodyScroll(e: Event) {
       :version="WIDGET_VERSION"
       :lanes="lanes"
       :lane-height="baseLaneHeight"
-      :lane-gap="laneGap"
+      :lane-gap="laneOuterGap"
       :lanes-top-offset="lanesTopOffset"
       :lane-top-fn="laneTopPx"
       :lane-height-fn="laneHeightFor"

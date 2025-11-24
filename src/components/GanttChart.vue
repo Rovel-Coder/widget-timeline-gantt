@@ -18,39 +18,58 @@ const parsedTasks = computed(() =>
     }),
 );
 
-// 2) Construction des lignes hiérarchiques : groupBy (Unité) -> groupBy2 (sous-ligne)
+// 2) Lignes hiérarchiques : groupBy (Unite) -> groupBy2 (Personnel)
 type Lane = {
   index: number;
   groupBy: string;   // Unité
-  groupBy2: string;  // sous-groupe (ex: Personnel) ou vide
+  groupBy2: string;  // Personnel (ou vide pour la ligne principale)
   label: string;
+  isGroupHeader: boolean; // true = ligne Unite, false = sous-ligne Personnel
 };
 
 const laneHeight = 24;
 const laneGap = 4;
 
 const lanes = computed<Lane[]>(() => {
-  const map = new Map<string, Lane>();
+  const result: Lane[] = [];
   let nextIndex = 0;
 
+  // Regrouper d'abord les tâches par groupBy
+  const byGroup = new Map<string, typeof parsedTasks.value>();
   for (const t of parsedTasks.value) {
-    const g1 = (t.groupBy ?? '').toString();     // Unité
-    const g2 = (t.groupBy2 ?? '').toString();    // Personnel (ou autre)
-    const key = `${g1}||${g2}`;                  // couple (groupBy, groupBy2)
+    const g1 = (t.groupBy ?? '').toString();
+    if (!byGroup.has(g1)) byGroup.set(g1, []);
+    byGroup.get(g1)!.push(t);
+  }
 
-    if (!map.has(key)) {
-      const isSub = g2 !== '';
-      const label = isSub ? g2 : g1;             // on affiche g2 s'il existe, sinon g1
-      map.set(key, {
+  for (const [g1, tasks] of byGroup.entries()) {
+    // 1) Ligne principale pour groupBy (Unite)
+    result.push({
+      index: nextIndex++,
+      groupBy: g1,
+      groupBy2: '',
+      label: g1 || '—',
+      isGroupHeader: true,
+    });
+
+    // 2) Sous-lignes pour chaque groupBy2 distinct (Personnel) dans cette Unite
+    const seenSub = new Set<string>();
+    for (const t of tasks) {
+      const g2 = (t.groupBy2 ?? '').toString();
+      if (!g2 || seenSub.has(g2)) continue;
+      seenSub.add(g2);
+
+      result.push({
         index: nextIndex++,
         groupBy: g1,
         groupBy2: g2,
-        label,
+        label: g2,
+        isGroupHeader: false,
       });
     }
   }
 
-  return Array.from(map.values()).sort((a, b) => a.index - b.index);
+  return result;
 });
 
 // 3) Associer chaque tâche à un laneIndex
@@ -70,7 +89,7 @@ const tasksWithLane = computed(() => {
   });
 });
 
-// Position verticale d'une ligne / d'une barre
+// Position verticale
 function laneTopPx(laneIndex: number) {
   return laneGap + laneIndex * (laneHeight + laneGap);
 }
@@ -122,7 +141,7 @@ function widthPercent(task: any) {
 
 <template>
   <div class="gantt-wrapper">
-    <!-- Colonne de gauche : lignes et sous-lignes -->
+    <!-- Colonne de gauche : Unite + Personnel en sous-lignes -->
     <div class="gantt-sidebar">
       <div v-if="!lanes.length" class="gantt-empty">
         Aucune tâche
@@ -132,7 +151,10 @@ function widthPercent(task: any) {
         v-for="lane in lanes"
         :key="lane.index"
         class="gantt-lane-label"
-        :class="{ 'gantt-lane-sub': lane.groupBy2 !== '' }"
+        :class="{
+          'gantt-lane-group': lane.isGroupHeader,
+          'gantt-lane-sub': !lane.isGroupHeader,
+        }"
         :style="{ top: laneTopPx(lane.index) + 'px' }"
       >
         {{ lane.label || '—' }}
@@ -157,7 +179,7 @@ function widthPercent(task: any) {
             backgroundColor: task.color || '#4caf50',
           }"
         >
-          <!-- Ici on affiche Titre (name) dans la barre -->
+          <!-- Texte de la barre : Titre -->
           <span class="gantt-label">
             {{ task.name || 'Tâche' }}
           </span>
@@ -195,7 +217,13 @@ function widthPercent(task: any) {
   white-space: nowrap;
 }
 
-/* Sous-ligne (groupBy2) légèrement indentée */
+/* Ligne principale : groupBy (Unite) */
+.gantt-lane-group {
+  font-weight: 600;
+  color: #f9fafb;
+}
+
+/* Sous-ligne : groupBy2 (Personnel) */
 .gantt-lane-sub {
   padding-left: 12px;
   font-size: 11px;
@@ -229,3 +257,4 @@ function widthPercent(task: any) {
   white-space: nowrap;
 }
 </style>
+

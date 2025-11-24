@@ -12,6 +12,12 @@ const dayStartHour = ref<number>(0);
 // décalage temporel (en nombre de périodes)
 const offset = ref<number>(0);
 
+// hauteur de base des lanes
+const laneHeight = 24;
+const laneGap = 4;
+// éventuelle marge avant la première lane (0 si déjà bien aligné)
+const headerHeight = 0;
+
 // refs pour le scroll synchronisé
 const bodyRef = ref<HTMLDivElement | null>(null);
 const sidebarRef = ref<HTMLDivElement | null>(null);
@@ -49,9 +55,6 @@ type Lane = {
   label: string;
   isGroupHeader: boolean;
 };
-
-const laneHeight = 24;
-const laneGap = 4;
 
 const lanes = computed<Lane[]>(() => {
   const result: Lane[] = [];
@@ -111,7 +114,7 @@ const tasksWithLane = computed(() => {
 });
 
 function laneTopPx(laneIndex: number) {
-  return laneGap + laneIndex * (laneHeight + laneGap);
+  return headerHeight + laneGap + laneIndex * (laneHeight + laneGap);
 }
 function topPx(task: any) {
   return laneTopPx(task.laneIndex);
@@ -195,7 +198,7 @@ const minDate = computed(() => {
 
   if (timeScale.value === 'month') {
     const d = new Date(baseMinDate.value);
-    d.setMonth(d.getMonth() + k); // mois précédent / suivant
+    d.setMonth(d.getMonth() + k);
     const day = d.getDay();
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     d.setDate(d.getDate() + diffToMonday);
@@ -473,20 +476,7 @@ function onBodyScroll(e: Event) {
         Aucune tâche
       </div>
       <div v-else class="gantt-sidebar-inner">
-        <div
-          v-for="lane in lanes"
-          :key="lane.index"
-          class="gantt-lane-label"
-          :class="{
-            'gantt-lane-group': lane.isGroupHeader,
-            'gantt-lane-sub': !lane.isGroupHeader,
-          }"
-          :style="{ top: laneTopPx(lane.index) + 'px', height: laneHeight + 'px' }"
-        >
-          {{ lane.label || '—' }}
-        </div>
-
-        <!-- fond des lanes, même que dans le corps -->
+        <!-- fond des lanes côté sidebar -->
         <div
           v-for="lane in lanes"
           :key="'sbg-' + lane.index"
@@ -496,6 +486,23 @@ function onBodyScroll(e: Event) {
             height: laneHeight + 'px'
           }"
         ></div>
+
+        <!-- labels -->
+        <div
+          v-for="lane in lanes"
+          :key="lane.index"
+          class="gantt-lane-label"
+          :class="{
+            'gantt-lane-group': lane.isGroupHeader,
+            'gantt-lane-sub': !lane.isGroupHeader,
+          }"
+          :style="{
+            top: laneTopPx(lane.index) + 'px',
+            height: laneHeight + 'px'
+          }"
+        >
+          {{ lane.label || '—' }}
+        </div>
       </div>
     </div>
 
@@ -670,6 +677,16 @@ function onBodyScroll(e: Event) {
   min-height: 100%;
 }
 
+/* fond des lanes côté sidebar */
+.gantt-lane-bg-sidebar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background-color: #020617;
+  border-top: 1px solid #111827;
+  z-index: 0;
+}
+
 .gantt-lane-label {
   position: absolute;
   display: flex;
@@ -677,6 +694,7 @@ function onBodyScroll(e: Event) {
   font-size: 12px;
   white-space: nowrap;
   padding-left: 8px;
+  z-index: 1;
 }
 
 .gantt-lane-group {
@@ -688,16 +706,6 @@ function onBodyScroll(e: Event) {
   padding-left: 20px;
   font-size: 11px;
   color: #d1d5db;
-}
-
-/* fond des lanes côté sidebar */
-.gantt-lane-bg-sidebar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  background-color: #020617;
-  border-top: 1px solid #111827;
-  z-index: -1;
 }
 
 /* Zone de droite */

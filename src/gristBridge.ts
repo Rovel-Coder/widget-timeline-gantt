@@ -3,16 +3,16 @@
 // Représentation d'une tâche après mapping Grist -> widget
 export type Task = {
   id: number;
-  name: string;              // texte final affiché dans la barre
-  start: string | null;      // Date ISO ou null
-  duration: number | null;   // Durée en jours (nombre)
+  name: string;               // texte final affiché dans la barre
+  start: string | null;       // Date ISO ou null
+  duration: number | null;    // Durée en heures (nombre)
   groupBy: string | null;
   groupBy2: string | null;
   color: string | null;
   isLocked: boolean | null;
   isGlobal: boolean | null;
   comment: string | null;
-  content?: string;          // texte brut construit à partir de "Contenu"
+  content?: string;           // texte brut construit à partir de "Contenu"
 };
 
 declare const grist: any;
@@ -29,26 +29,45 @@ export const columnsConfig = [
   { name: 'isGlobal',   title: 'Est global',       type: 'Bool',          optional: true },
   { name: 'comment',    title: 'Commentaire',      type: 'Text',          optional: true },
 
-  { name: 'contentCols',  title: 'Contenu',             allowMultiple: true, optional: true },
-  { name: 'editableCols', title: 'Colonnes éditables',  allowMultiple: true, optional: true },
-  { name: 'totalCols',    title: 'Colonnes de totaux',  allowMultiple: true, optional: true },
+  { name: 'contentCols',  title: 'Contenu',              allowMultiple: true, optional: true },
+  { name: 'editableCols', title: 'Colonnes éditables',   allowMultiple: true, optional: true },
+  { name: 'totalCols',    title: 'Colonnes de totaux',   allowMultiple: true, optional: true },
 ];
 
+// Options du widget (panneau de droite)
+export type WidgetOptions = {
+  dayStartHour?: number;  // heure de début de journée (0-23)
+  logoUrl?: string;       // URL du logo
+};
+
 // Initialisation de l’API Grist et mapping des enregistrements
-export function initGrist(onTasksChange: (tasks: Task[]) => void) {
+export function initGrist(
+  onTasksChange: (tasks: Task[]) => void,
+  onOptionsChange?: (options: WidgetOptions) => void,
+) {
   grist.ready({
     requiredAccess: 'full',
     columns: columnsConfig,
   });
 
+  // Options du widget
+  grist.onOptions((options: any) => {
+    const safe: WidgetOptions = {};
+    if (options && typeof options.dayStartHour === 'number') {
+      safe.dayStartHour = options.dayStartHour;
+    }
+    if (options && typeof options.logoUrl === 'string') {
+      safe.logoUrl = options.logoUrl;
+    }
+    onOptionsChange && onOptionsChange(safe);
+  });
+
+  // Données
   grist.onRecords((records: any[], mappings: any) => {
     const mappedRecords = grist.mapColumnNames(records, {
       columns: columnsConfig,
       mappings,
     });
-
-    console.log('RAW records', records);
-    console.log('MAPPED records', mappedRecords);
 
     if (!mappedRecords) {
       onTasksChange([]);
@@ -71,7 +90,7 @@ export function initGrist(onTasksChange: (tasks: Task[]) => void) {
         id: r.id,
         name: content || fallbackName || 'Tâche',
         start: r.startDate ?? null,
-        duration: r.duration != null ? Number(r.duration) : null,
+        duration: r.duration != null ? Number(r.duration) : null, // EN HEURES
         groupBy: r.groupBy ?? null,
         groupBy2: r.groupBy2 ?? null,
         color: r.color ?? null,
@@ -81,8 +100,6 @@ export function initGrist(onTasksChange: (tasks: Task[]) => void) {
         content,
       };
     });
-
-    console.log('TASKS sent to Vue', tasks);
 
     onTasksChange(tasks);
   });

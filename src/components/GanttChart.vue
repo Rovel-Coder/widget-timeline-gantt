@@ -9,13 +9,16 @@ const props = defineProps<{ tasks: Task[] }>();
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 // heure de début de journée (panneau Grist)
 const dayStartHour = ref<number>(0);
-// décalage temporel (en nombre de périodes)
-const offset = ref<number>(0);
+// URL du logo
+const logoUrl = ref<string | null>(null);
 
 // géométrie verticale
 const laneHeight = 24;
 const laneGap = 4;
-const headerHeight = 0;
+const headerHeight = 32; // réserve pour le logo en haut de la sidebar
+
+// décalage temporel
+const offset = ref<number>(0);
 
 // refs pour scroll
 const bodyRef = ref<HTMLDivElement | null>(null);
@@ -23,6 +26,7 @@ const sidebarRef = ref<HTMLDivElement | null>(null);
 
 declare const grist: any;
 
+// Lecture des options du widget (dayStartHour, logoUrl)
 if (typeof grist !== 'undefined') {
   grist.onOptions((options: any) => {
     if (options && typeof options.dayStartHour === 'number') {
@@ -30,11 +34,15 @@ if (typeof grist !== 'undefined') {
     } else {
       dayStartHour.value = 0;
     }
+    if (options && typeof options.logoUrl === 'string') {
+      logoUrl.value = options.logoUrl || null;
+    } else {
+      logoUrl.value = null;
+    }
   });
 }
 
-// 1) Tâches avec dates JS
-// IMPORTANT : duration est en HEURES → conversion en jours
+// 1) Tâches avec dates JS (duration en HEURES → conversion en jours)
 const parsedTasks = computed(() =>
   props.tasks
     .filter((t) => t.start && t.duration != null)
@@ -70,6 +78,7 @@ const lanes = computed<Lane[]>(() => {
   }
 
   for (const [g1, tasks] of byGroup.entries()) {
+    // ligne principale
     result.push({
       index: nextIndex++,
       groupBy: g1,
@@ -78,6 +87,7 @@ const lanes = computed<Lane[]>(() => {
       isGroupHeader: true,
     });
 
+    // sous-lignes
     const seenSub = new Set<string>();
     for (const t of tasks) {
       const g2 = (t.groupBy2 ?? '').toString();
@@ -120,7 +130,7 @@ function topPx(task: any) {
   return laneTopPx(task.laneIndex);
 }
 
-// 4) Date de référence : aujourd'hui si aucune tâche, sinon min des tâches
+// 4) Dates / échelles
 const referenceDate = computed(() => {
   if (!tasksWithLane.value.length) {
     return new Date();
@@ -130,9 +140,6 @@ const referenceDate = computed(() => {
   );
 });
 
-/**
- * Bornes de base (sans offset)
- */
 const baseMinDate = computed(() => {
   const d = new Date(referenceDate.value);
 
@@ -184,12 +191,6 @@ const baseMaxDate = computed(() => {
   return qEnd;
 });
 
-/**
- * Application de l'offset
- * - semaine : ± 7 jours
- * - mois    : ± 1 mois (1er → dernier jour strict)
- * - trimestre : ± 3 mois, arrondi aux semaines
- */
 const minDate = computed(() => {
   const k = offset.value;
 
@@ -200,14 +201,12 @@ const minDate = computed(() => {
   }
 
   if (timeScale.value === 'month') {
-    // 1er jour du mois + offset en mois
     const ref = new Date(referenceDate.value);
     ref.setMonth(ref.getMonth() + k, 1);
     ref.setHours(0, 0, 0, 0);
     return ref;
   }
 
-  // trimestre
   const d = new Date(baseMinDate.value);
   d.setMonth(d.getMonth() + k * 3);
   const day = d.getDay();
@@ -227,14 +226,12 @@ const maxDate = computed(() => {
   }
 
   if (timeScale.value === 'month') {
-    // dernier jour du mois + offset en mois
     const ref = new Date(referenceDate.value);
-    ref.setMonth(ref.getMonth() + k + 1, 0); // 0 = dernier jour du mois courant après décalage
+    ref.setMonth(ref.getMonth() + k + 1, 0);
     ref.setHours(23, 59, 59, 999);
     return ref;
   }
 
-  // trimestre
   const d = new Date(baseMaxDate.value);
   d.setMonth(d.getMonth() + k * 3);
   const day = d.getDay();
@@ -270,16 +267,15 @@ function getIsoWeekNumber(date: Date): number {
     Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
   );
   const dayNum = tmp.getUTCDay() || 7;
-  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+  tmp.setUTCDate(tmp.getUTCDay() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(((+tmp - +yearStart) / 86400000 + 1) / 7);
   return weekNo;
 }
 
-// 5) Buckets
+// Buckets
 type Bucket = { left: number; width: number; label: string; date?: Date };
 
-// semaine : ligne1 semaines, ligne2 jours
 const weekWeekBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'week') return res;
@@ -326,7 +322,6 @@ const weekDayBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// mois : ligne1 mois, ligne2 semaines
 const monthMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'month') return res;
@@ -381,7 +376,6 @@ const monthWeekBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// trimestre : une seule ligne de mois
 const quarterMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'quarter') return res;
@@ -414,9 +408,7 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-/**
- * Navigation par flèches
- */
+// Navigation
 function goPrev() {
   offset.value -= 1;
 }
@@ -427,9 +419,7 @@ function resetOffset() {
   offset.value = 0;
 }
 
-/**
- * Centrage auto sur la date du jour à l'ouverture
- */
+// Centrage auto sur "aujourd'hui"
 onMounted(async () => {
   await nextTick();
 
@@ -451,14 +441,11 @@ onMounted(async () => {
   const cellRect = todayCell.getBoundingClientRect();
 
   const offsetLeft = cellRect.left - bodyRect.left + body.scrollLeft;
-
   body.scrollLeft =
     offsetLeft - body.clientWidth / 2 + todayCell.offsetWidth / 2;
 });
 
-/**
- * Scroll vertical synchronisé sidebar <-> corps
- */
+// Scroll vertical synchronisé sidebar <-> corps
 function onBodyScroll(e: Event) {
   const body = e.target as HTMLDivElement;
   if (sidebarRef.value) {
@@ -471,6 +458,16 @@ function onBodyScroll(e: Event) {
   <div class="gantt-wrapper">
     <!-- Colonne de gauche -->
     <div class="gantt-sidebar" ref="sidebarRef">
+      <!-- zone logo -->
+      <div class="gantt-logo-area">
+        <div v-if="logoUrl" class="gantt-logo-box">
+          <img :src="logoUrl" alt="Logo" class="gantt-logo-img" />
+        </div>
+        <div v-else class="gantt-logo-box gantt-logo-placeholder">
+          Logo
+        </div>
+      </div>
+
       <div v-if="!lanes.length" class="gantt-empty">
         Aucune tâche
       </div>
@@ -669,6 +666,38 @@ function onBodyScroll(e: Event) {
   position: relative;
   border-right: 1px solid #374151;
   overflow: hidden;
+}
+
+/* Zone logo en haut */
+.gantt-logo-area {
+  height: 32px;
+  border-bottom: 1px solid #1f2937;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #020617;
+}
+
+.gantt-logo-box {
+  width: 120px;
+  height: 20px;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gantt-logo-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.gantt-logo-placeholder {
+  border: 1px dashed #4b5563;
+  color: #6b7280;
+  font-size: 11px;
 }
 
 .gantt-sidebar-inner {

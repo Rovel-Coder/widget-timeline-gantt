@@ -12,13 +12,12 @@ const dayStartHour = ref<number>(0);
 // décalage temporel (en nombre de périodes)
 const offset = ref<number>(0);
 
-// hauteur de base des lanes
+// géométrie verticale
 const laneHeight = 24;
 const laneGap = 4;
-// éventuelle marge avant la première lane (0 si déjà bien aligné)
 const headerHeight = 0;
 
-// refs pour le scroll synchronisé
+// refs pour scroll
 const bodyRef = ref<HTMLDivElement | null>(null);
 const sidebarRef = ref<HTMLDivElement | null>(null);
 
@@ -35,13 +34,16 @@ if (typeof grist !== 'undefined') {
 }
 
 // 1) Tâches avec dates JS
+// IMPORTANT : duration est en HEURES → conversion en jours
 const parsedTasks = computed(() =>
   props.tasks
     .filter((t) => t.start && t.duration != null)
     .map((t) => {
       const startDate = new Date(t.start as string);
+      const hours = Number(t.duration);
+      const days = hours / 24;
       const endDate = new Date(
-        startDate.getTime() + (t.duration as number) * 24 * 60 * 60 * 1000,
+        startDate.getTime() + days * 24 * 60 * 60 * 1000,
       );
       return { ...t, startDate, endDate };
     }),
@@ -68,7 +70,6 @@ const lanes = computed<Lane[]>(() => {
   }
 
   for (const [g1, tasks] of byGroup.entries()) {
-    // ligne principale
     result.push({
       index: nextIndex++,
       groupBy: g1,
@@ -77,7 +78,6 @@ const lanes = computed<Lane[]>(() => {
       isGroupHeader: true,
     });
 
-    // sous-lignes
     const seenSub = new Set<string>();
     for (const t of tasks) {
       const g2 = (t.groupBy2 ?? '').toString();
@@ -131,7 +131,7 @@ const referenceDate = computed(() => {
 });
 
 /**
- * Bornes de base (sans offset) selon l'échelle
+ * Bornes de base (sans offset)
  */
 const baseMinDate = computed(() => {
   const d = new Date(referenceDate.value);
@@ -185,7 +185,10 @@ const baseMaxDate = computed(() => {
 });
 
 /**
- * Application de l'offset + extension lundi/dimanche pour mois / trimestre
+ * Application de l'offset
+ * - semaine : ± 7 jours
+ * - mois    : ± 1 mois (1er → dernier jour strict)
+ * - trimestre : ± 3 mois, arrondi aux semaines
  */
 const minDate = computed(() => {
   const k = offset.value;
@@ -197,13 +200,11 @@ const minDate = computed(() => {
   }
 
   if (timeScale.value === 'month') {
-    const d = new Date(baseMinDate.value);
-    d.setMonth(d.getMonth() + k);
-    const day = d.getDay();
-    const diffToMonday = (day === 0 ? -6 : 1) - day;
-    d.setDate(d.getDate() + diffToMonday);
-    d.setHours(0, 0, 0, 0);
-    return d;
+    // 1er jour du mois + offset en mois
+    const ref = new Date(referenceDate.value);
+    ref.setMonth(ref.getMonth() + k, 1);
+    ref.setHours(0, 0, 0, 0);
+    return ref;
   }
 
   // trimestre
@@ -226,13 +227,11 @@ const maxDate = computed(() => {
   }
 
   if (timeScale.value === 'month') {
-    const d = new Date(baseMaxDate.value);
-    d.setMonth(d.getMonth() + k);
-    const day = d.getDay();
-    const diffToSunday = 7 - (day === 0 ? 7 : day);
-    d.setDate(d.getDate() + diffToSunday);
-    d.setHours(23, 59, 59, 999);
-    return d;
+    // dernier jour du mois + offset en mois
+    const ref = new Date(referenceDate.value);
+    ref.setMonth(ref.getMonth() + k + 1, 0); // 0 = dernier jour du mois courant après décalage
+    ref.setHours(23, 59, 59, 999);
+    return ref;
   }
 
   // trimestre
@@ -271,7 +270,7 @@ function getIsoWeekNumber(date: Date): number {
     Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
   );
   const dayNum = tmp.getUTCDay() || 7;
-  tmp.setUTCDate(tmp.getUTCDay() + 4 - dayNum);
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(((+tmp - +yearStart) / 86400000 + 1) / 7);
   return weekNo;

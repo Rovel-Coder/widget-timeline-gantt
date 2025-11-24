@@ -4,10 +4,9 @@ import type { Task } from '../gristBridge';
 
 import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
-import GanttHeader from './GanttHeader.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.4';
+const WIDGET_VERSION = 'V0.0.5';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -354,6 +353,57 @@ function getIsoWeekNumber(date: Date): number {
 
 type Bucket = { left: number; width: number; label: string; date?: Date };
 
+// 5) Buckets pour les 3 coupures de la journée (vue Semaine)
+type TimeOfDayBucket = Bucket & { slot: 'morning' | 'afternoon' | 'night' };
+
+const timeOfDayBuckets = computed<TimeOfDayBucket[]>(() => {
+  const res: TimeOfDayBucket[] = [];
+  if (timeScale.value !== 'week') return res;
+
+  const start = new Date(minDate.value);
+  const end = new Date(maxDate.value);
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDay) {
+    const dayStart = new Date(ts);
+
+    const mStart = new Date(dayStart);
+    mStart.setHours(8, 0, 0, 0);
+    const mEnd = new Date(dayStart);
+    mEnd.setHours(14, 0, 0, 0);
+
+    const aStart = new Date(dayStart);
+    aStart.setHours(14, 0, 0, 0);
+    const aEnd = new Date(dayStart);
+    aEnd.setHours(20, 0, 0, 0);
+
+    const nStart = new Date(dayStart);
+    nStart.setHours(20, 0, 0, 0);
+    const nEnd = new Date(dayStart.getTime() + oneDay);
+    nEnd.setHours(8, 0, 0, 0);
+
+    const addBucket = (
+      slot: TimeOfDayBucket['slot'],
+      bStart: Date,
+      bEnd: Date,
+      label: string,
+    ) => {
+      const left =
+        ((bStart.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
+      const width =
+        ((bEnd.getTime() - bStart.getTime()) / totalMs.value) * 100;
+      res.push({ left, width, label, slot });
+    };
+
+    addBucket('morning', mStart, mEnd, 'Matin');
+    addBucket('afternoon', aStart, aEnd, 'Après‑midi');
+    addBucket('night', nStart, nEnd, 'Nuit');
+  }
+
+  return res;
+});
+
+// buckets existants
 const weekWeekBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'week') return res;
@@ -557,15 +607,88 @@ function onBodyScroll(e: Event) {
         @change-scale="(s) => { timeScale = s; offset = 0; }"
       />
 
-      <GanttHeader
-        :time-scale="timeScale"
-        :week-week-buckets="weekWeekBuckets"
-        :week-day-buckets="weekDayBuckets"
-        :month-month-buckets="monthMonthBuckets"
-        :month-week-buckets="monthWeekBuckets"
-        :quarter-month-buckets="quarterMonthBuckets"
-      />
+      <!-- Header multi-lignes -->
+      <div class="gantt-header">
+        <!-- Ligne 1 : semaines / mois / trimestres -->
+        <div class="gantt-header-row">
+          <template v-if="timeScale === 'week'">
+            <div
+              v-for="b in weekWeekBuckets"
+              :key="'ww-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
 
+          <template v-else-if="timeScale === 'month'">
+            <div
+              v-for="b in monthMonthBuckets"
+              :key="'mm-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+
+          <template v-else>
+            <div
+              v-for="b in quarterMonthBuckets"
+              :key="'qm-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+        </div>
+
+        <!-- Ligne 2 : jours ou semaines -->
+        <div class="gantt-header-row">
+          <template v-if="timeScale === 'week'">
+            <div
+              v-for="b in weekDayBuckets"
+              :key="'wd-' + b.left"
+              class="gantt-header-cell"
+              :class="{
+                'is-today':
+                  b.date &&
+                  b.date.toDateString() === new Date().toDateString(),
+              }"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+
+          <template v-else-if="timeScale === 'month'">
+            <div
+              v-for="b in monthWeekBuckets"
+              :key="'mw-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+        </div>
+
+        <!-- Ligne 3 : Matin / Après-midi / Nuit (semaine uniquement) -->
+        <div v-if="timeScale === 'week'" class="gantt-header-row">
+          <div
+            v-for="b in timeOfDayBuckets"
+            :key="'tod-' + b.left + '-' + b.slot"
+            class="gantt-header-cell gantt-header-cell-tod"
+            :style="{ left: b.left + '%', width: b.width + '%' }"
+          >
+            {{ b.label }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Corps -->
       <div class="gantt-body" ref="bodyRef" @scroll="onBodyScroll">
         <div v-if="!tasksWithLane.length" class="gantt-empty">
           Aucune tâche à afficher
@@ -622,6 +745,56 @@ function onBodyScroll(e: Event) {
   height: 100%;
 }
 
+/* Header */
+.gantt-header {
+  position: relative;
+  border-bottom: 1px solid #374151;
+  background-color: #111827;
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.gantt-header-row {
+  position: relative;
+  height: 18px;
+  border-bottom: 1px solid #111827;
+  overflow: hidden;
+}
+
+.gantt-header-cell {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid #1f2937;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.gantt-header-cell.is-today {
+  background-color: #1d4ed8;
+  color: #f9fafb;
+  font-weight: 600;
+}
+
+/* 3e ligne : Matin / Après-midi / Nuit */
+.gantt-header-cell-tod {
+  font-size: 9px;
+  opacity: 0.8;
+}
+
+.gantt-header-cell-tod:nth-child(3n + 1) {
+  background-color: rgba(37, 99, 235, 0.08);
+}
+.gantt-header-cell-tod:nth-child(3n + 2) {
+  background-color: rgba(16, 185, 129, 0.08);
+}
+.gantt-header-cell-tod:nth-child(3n + 3) {
+  background-color: rgba(234, 179, 8, 0.08);
+}
+
+/* Corps */
 .gantt-body {
   position: relative;
   flex: 1;

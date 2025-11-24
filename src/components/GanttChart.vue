@@ -32,7 +32,7 @@ const baseLaneHeight = 24;   // hauteur minimale d'une lane
 const laneGap = 4;
 const toolbarHeight = 24;
 const headerRowHeight = 18;
-const headerHeight = headerRowHeight * 2;
+const headerHeight = headerRowHeight * 3; // 3 lignes (sem, jour, créneaux)
 const lanesTopOffset = toolbarHeight + headerHeight;
 
 const offset = ref<number>(0);
@@ -353,7 +353,7 @@ function getIsoWeekNumber(date: Date): number {
 
 type Bucket = { left: number; width: number; label: string; date?: Date };
 
-// 5) Buckets pour les 3 coupures de la journée (vue Semaine)
+// Buckets pour les 3 coupures de la journée (vue Semaine)
 type TimeOfDayBucket = Bucket & { slot: 'morning' | 'afternoon' | 'night' };
 
 const timeOfDayBuckets = computed<TimeOfDayBucket[]>(() => {

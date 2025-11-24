@@ -6,13 +6,10 @@ const props = defineProps<{
     label: string;
     isGroupHeader: boolean;
   }[];
-  // hauteur de base d’une lane (24)
   laneHeight: number;
   laneGap: number;
   lanesTopOffset: number;
-  // même fonction que dans GanttChart.vue
   laneTopFn: (laneIndex: number) => number;
-  // nouvelle fonction passée par le parent : hauteur réelle d'une lane
   laneHeightFn: (laneIndex: number) => number;
 }>();
 </script>
@@ -24,7 +21,7 @@ const props = defineProps<{
       <span class="gantt-version">{{ props.version }}</span>
     </div>
 
-    <!-- placeholder invisible (même hauteur que les 2 lignes de header à droite) -->
+    <!-- placeholder invisible (même hauteur que les 3 lignes de header à droite) -->
     <div class="gantt-sidebar-placeholder"></div>
 
     <div v-if="!props.lanes.length" class="gantt-empty">
@@ -42,7 +39,7 @@ const props = defineProps<{
         }"
       ></div>
 
-      <!-- labels (une seule ligne, centrée sur le haut de la lane) -->
+      <!-- labels -->
       <div
         v-for="lane in props.lanes"
         :key="lane.index"
@@ -69,7 +66,7 @@ const props = defineProps<{
   overflow: hidden;
 }
 
-/* même hauteur que .gantt-toolbar à droite, sans bordure pour éviter le pixel en plus */
+/* même hauteur que .gantt-toolbar à droite */
 .gantt-sidebar-toolbar {
   height: 24px;
   background-color: #020617;
@@ -84,9 +81,9 @@ const props = defineProps<{
   color: #9ca3af;
 }
 
-/* placeholder : hauteur des 2 lignes de header (2 * 18) */
+/* placeholder : hauteur des 3 lignes de header (3 * 18) */
 .gantt-sidebar-placeholder {
-  height: 36px;
+  height: 54px;
   background-color: #111827;
 }
 

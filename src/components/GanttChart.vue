@@ -9,13 +9,11 @@ const props = defineProps<{ tasks: Task[] }>();
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 // heure de début de journée (panneau Grist)
 const dayStartHour = ref<number>(0);
-// URL du logo
-const logoUrl = ref<string | null>(null);
 
 // géométrie verticale
 const laneHeight = 24;
 const laneGap = 4;
-const headerHeight = 32; // réserve pour le logo en haut de la sidebar
+const headerHeight = 32; // doit matcher la hauteur de la barre du haut à droite
 
 // décalage temporel
 const offset = ref<number>(0);
@@ -26,18 +24,13 @@ const sidebarRef = ref<HTMLDivElement | null>(null);
 
 declare const grist: any;
 
-// Lecture des options du widget (dayStartHour, logoUrl)
+// Lecture des options du widget (on garde uniquement dayStartHour)
 if (typeof grist !== 'undefined') {
   grist.onOptions((options: any) => {
     if (options && typeof options.dayStartHour === 'number') {
       dayStartHour.value = options.dayStartHour;
     } else {
       dayStartHour.value = 0;
-    }
-    if (options && typeof options.logoUrl === 'string') {
-      logoUrl.value = options.logoUrl || null;
-    } else {
-      logoUrl.value = null;
     }
   });
 }
@@ -458,14 +451,9 @@ function onBodyScroll(e: Event) {
   <div class="gantt-wrapper">
     <!-- Colonne de gauche -->
     <div class="gantt-sidebar" ref="sidebarRef">
-      <!-- zone logo -->
+      <!-- carré invisible, même hauteur que l'en-tête de droite -->
       <div class="gantt-logo-area">
-        <div v-if="logoUrl" class="gantt-logo-box">
-          <img :src="logoUrl" alt="Logo" class="gantt-logo-img" />
-        </div>
-        <div v-else class="gantt-logo-box gantt-logo-placeholder">
-          Logo
-        </div>
+        <div class="gantt-logo-placeholder"></div>
       </div>
 
       <div v-if="!lanes.length" class="gantt-empty">
@@ -668,9 +656,9 @@ function onBodyScroll(e: Event) {
   overflow: hidden;
 }
 
-/* Zone logo en haut */
+/* Zone « logo » en haut — sert juste d’espace vide */
 .gantt-logo-area {
-  height: 32px;
+  height: 32px; /* même hauteur que barre du haut de droite */
   border-bottom: 1px solid #1f2937;
   display: flex;
   align-items: center;
@@ -678,28 +666,15 @@ function onBodyScroll(e: Event) {
   background: #020617;
 }
 
-.gantt-logo-box {
+/* carré invisible qui occupe l’espace */
+.gantt-logo-placeholder {
   width: 120px;
   height: 20px;
   border-radius: 4px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* aucune bordure, aucune couleur -> vraiment invisible */
 }
 
-.gantt-logo-img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-.gantt-logo-placeholder {
-  border: 1px dashed #4b5563;
-  color: #6b7280;
-  font-size: 11px;
-}
-
+/* sidebar */
 .gantt-sidebar-inner {
   position: relative;
   min-height: 100%;

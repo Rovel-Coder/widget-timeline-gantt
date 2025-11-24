@@ -1,9 +1,12 @@
 <!-- src/components/GanttChart.vue -->
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { Task } from '../gristBridge';
 
 const props = defineProps<{ tasks: Task[] }>();
+
+// 0) Choix de l'échelle de temps
+const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 
 // 1) Tâches avec dates JS
 const parsedTasks = computed(() =>
@@ -129,16 +132,16 @@ function widthPercent(task: any) {
   );
 }
 
-// 5) Grille temporelle (un bloc par jour)
-type DayBucket = {
-  date: Date;
+// 5) Grille temporelle selon l'échelle choisie
+type TimeBucket = {
+  start: Date;
   label: string;
-  left: number;   // en %
-  width: number;  // en %
+  left: number;
+  width: number;
 };
 
-const dayBuckets = computed<DayBucket[]>(() => {
-  const buckets: DayBucket[] = [];
+const timeBuckets = computed<TimeBucket[]>(() => {
+  const buckets: TimeBucket[] = [];
   if (!tasksWithLane.value.length) return buckets;
 
   const start = new Date(minDate.value);
@@ -147,19 +150,57 @@ const dayBuckets = computed<DayBucket[]>(() => {
   end.setHours(23, 59, 59, 999);
 
   const oneDayMs = 24 * 60 * 60 * 1000;
-  for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDayMs) {
-    const d = new Date(ts);
-    const label = d.toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-    });
 
-    const left =
-      ((d.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
-    const width = (oneDayMs / totalMs.value) * 100;
+  if (timeScale.value === 'week') {
+    // 1 case = 1 jour
+    for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDayMs) {
+      const d = new Date(ts);
+      const label = d.toLocaleDateString('fr-FR', {
+        weekday: 'short',
+        day: '2-digit',
+      });
+      const left =
+        ((d.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
+      const width = (oneDayMs / totalMs.value) * 100;
+      buckets.push({ start: d, label, left, width });
+    }
+  } else if (timeScale.value === 'month') {
+    // 1 case = 1 semaine
+    for (let ts = start.getTime(); ts <= end.getTime(); ts += 7 * oneDayMs) {
+      const d = new Date(ts);
+      const label = d.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+      });
+      const left =
+        ((d.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
+      const width = ((7 * oneDayMs) / totalMs.value) * 100;
+      buckets.push({ start: d, label, left, width });
+    }
+  } else {
+    // 'quarter' : 1 case = 1 mois
+    const d = new Date(start);
+    d.setDate(1);
+    while (d <= end) {
+      const label = d.toLocaleDateString('fr-FR', {
+        month: 'short',
+        year: '2-digit',
+      });
+      const bucketStart = new Date(d);
+      const bucketEnd = new Date(d);
+      bucketEnd.setMonth(bucketEnd.getMonth() + 1);
 
-    buckets.push({ date: d, label, left, width });
+      const left =
+        ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
+        100;
+      const width =
+        ((bucketEnd.getTime() - bucketStart.getTime()) / totalMs.value) * 100;
+
+      buckets.push({ start: bucketStart, label, left, width });
+      d.setMonth(d.getMonth() + 1);
+    }
   }
+
   return buckets;
 });
 </script>
@@ -186,12 +227,37 @@ const dayBuckets = computed<DayBucket[]>(() => {
       </div>
     </div>
 
-    <!-- Zone de droite : en-tête + barres -->
+    <!-- Zone de droite : toolbar + en-tête + barres -->
     <div class="gantt">
+      <!-- Toolbar échelle de temps -->
+      <div class="gantt-toolbar">
+        <button
+          class="gantt-btn"
+          :class="{ 'is-active': timeScale === 'week' }"
+          @click="timeScale = 'week'"
+        >
+          Semaine
+        </button>
+        <button
+          class="gantt-btn"
+          :class="{ 'is-active': timeScale === 'month' }"
+          @click="timeScale = 'month'"
+        >
+          Mois
+        </button>
+        <button
+          class="gantt-btn"
+          :class="{ 'is-active': timeScale === 'quarter' }"
+          @click="timeScale = 'quarter'"
+        >
+          Trimestre
+        </button>
+      </div>
+
       <!-- En-tête temporel -->
-      <div class="gantt-header" v-if="dayBuckets.length">
+      <div class="gantt-header" v-if="timeBuckets.length">
         <div
-          v-for="bucket in dayBuckets"
+          v-for="bucket in timeBuckets"
           :key="bucket.label + bucket.left"
           class="gantt-header-cell"
           :style="{
@@ -276,6 +342,30 @@ const dayBuckets = computed<DayBucket[]>(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+/* Toolbar */
+.gantt-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+  border-bottom: 1px solid #374151;
+  background-color: #020617;
+}
+
+.gantt-btn {
+  border: 1px solid #4b5563;
+  background: #111827;
+  color: #e5e7eb;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.gantt-btn.is-active {
+  background: #2563eb;
+  border-color: #2563eb;
 }
 
 /* En-tête temporel */

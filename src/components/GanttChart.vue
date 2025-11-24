@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.5';
+const WIDGET_VERSION = 'V0.0.6';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -27,13 +27,13 @@ type Lane = {
   isGroupHeader: boolean;
 };
 
-// géométrie de base
-const baseLaneHeight = 24;   // hauteur minimale d'une lane
+// géométrie de base (tout à 25px sauf les lanes)
+const baseLaneHeight = 24;   // tu peux mettre 25 si tu veux des lanes exactement à la même hauteur
 const laneGap = 4;
-const toolbarHeight = 24;
-const headerRowHeight = 18;
-const headerHeight = headerRowHeight * 3; // 3 lignes (sem, jour, créneaux)
-const lanesTopOffset = toolbarHeight + headerHeight;
+const toolbarHeight = 25;           // ligne des boutons
+const headerRowHeight = 25;         // chaque ligne du header
+const headerHeight = headerRowHeight * 3; // 3 lignes (vue Semaine / Mois / Trimestre)
+const lanesTopOffset = toolbarHeight + headerHeight; // 25 + 75 = 100
 
 const offset = ref<number>(0);
 
@@ -607,7 +607,7 @@ function onBodyScroll(e: Event) {
         @change-scale="(s) => { timeScale = s; offset = 0; }"
       />
 
-      <!-- Header multi-lignes -->
+      <!-- Header multi-lignes (3 lignes à 25px) -->
       <div class="gantt-header">
         <!-- Ligne 1 : semaines / mois / trimestres -->
         <div class="gantt-header-row">
@@ -686,6 +686,10 @@ function onBodyScroll(e: Event) {
             {{ b.label }}
           </div>
         </div>
+
+        <!-- Pour Mois / Trimestre, on peut laisser la 3e ligne vide
+             ou l'utiliser pour afficher les jours par exemple. -->
+        <div v-else class="gantt-header-row"></div>
       </div>
 
       <!-- Corps -->
@@ -756,7 +760,7 @@ function onBodyScroll(e: Event) {
 
 .gantt-header-row {
   position: relative;
-  height: 18px;
+  height: 25px;
   border-bottom: 1px solid #111827;
   overflow: hidden;
 }

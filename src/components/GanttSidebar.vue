@@ -21,7 +21,7 @@ const props = defineProps<{
       <span class="gantt-version">{{ props.version }}</span>
     </div>
 
-    <!-- placeholder invisible (même hauteur que les 3 lignes de header à droite) -->
+    <!-- placeholder (3 lignes de header à 25px) -->
     <div class="gantt-sidebar-placeholder"></div>
 
     <div v-if="!props.lanes.length" class="gantt-empty">
@@ -66,9 +66,9 @@ const props = defineProps<{
   overflow: hidden;
 }
 
-/* même hauteur que .gantt-toolbar à droite */
+/* 25px comme la toolbar de droite */
 .gantt-sidebar-toolbar {
-  height: 24px;
+  height: 25px;
   background-color: #020617;
   display: flex;
   align-items: center;
@@ -81,9 +81,9 @@ const props = defineProps<{
   color: #9ca3af;
 }
 
-/* placeholder : hauteur des 3 lignes de header (3 * 18) */
+/* 3 lignes de header à 25px => 75px */
 .gantt-sidebar-placeholder {
-  height: 54px;
+  height: 75px;
   background-color: #111827;
 }
 

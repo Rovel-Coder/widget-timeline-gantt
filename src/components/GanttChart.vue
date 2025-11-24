@@ -4,7 +4,7 @@ import type { Task } from '../gristBridge';
 
 const props = defineProps<{ tasks: Task[] }>();
 
-// Conversion des tâches en objets avec dates JS
+// 1) Tâches avec dates JS
 const parsedTasks = computed(() =>
   props.tasks
     .filter((t) => t.start && t.duration != null)
@@ -17,28 +17,43 @@ const parsedTasks = computed(() =>
     }),
 );
 
-// Si aucune tâche valide, on évite Math.min/Math.max sur un tableau vide
+// 2) Attribution d'un index de ligne par valeur de groupBy (Personnel)
+const tasksWithLane = computed(() => {
+  const laneByGroup = new Map<string, number>();
+  let nextLane = 0;
+
+  return parsedTasks.value.map((t) => {
+    const key = (t.groupBy ?? '').toString(); // ex: "Romain"
+    if (!laneByGroup.has(key)) {
+      laneByGroup.set(key, nextLane++);
+    }
+    const laneIndex = laneByGroup.get(key) ?? 0;
+    return { ...t, laneIndex };
+  });
+});
+
+// 3) Calcul de l'échelle de temps
 const minDate = computed(() => {
-  if (!parsedTasks.value.length) {
+  if (!tasksWithLane.value.length) {
     return new Date();
   }
   return new Date(
-    Math.min(...parsedTasks.value.map((t) => t.startDate.getTime())),
+    Math.min(...tasksWithLane.value.map((t) => t.startDate.getTime())),
   );
 });
 
 const maxDate = computed(() => {
-  if (!parsedTasks.value.length) {
+  if (!tasksWithLane.value.length) {
     return new Date();
   }
   return new Date(
-    Math.max(...parsedTasks.value.map((t) => t.endDate.getTime())),
+    Math.max(...tasksWithLane.value.map((t) => t.endDate.getTime())),
   );
 });
 
 const totalMs = computed(() => {
   const diff = maxDate.value.getTime() - minDate.value.getTime();
-  return diff || 1; // pour éviter division par 0
+  return diff || 1;
 });
 
 function leftPercent(task: any) {
@@ -56,20 +71,28 @@ function widthPercent(task: any) {
     100
   );
 }
+
+// 4) Hauteur d'une ligne pour positionner les barres verticalement
+const laneHeight = 28; // px (24px barre + marges)
+function topPx(task: any) {
+  return 4 + task.laneIndex * laneHeight;
+}
 </script>
+
 
 <template>
   <div class="gantt">
-    <div v-if="!parsedTasks.length" class="gantt-empty">
+    <div v-if="!tasksWithLane.length" class="gantt-empty">
       Aucune tâche à afficher
     </div>
 
     <div v-else>
       <div
-        v-for="task in parsedTasks"
+        v-for="task in tasksWithLane"
         :key="task.id"
         class="gantt-bar"
         :style="{
+          top: topPx(task) + 'px',
           left: leftPercent(task) + '%',
           width: widthPercent(task) + '%',
           backgroundColor: task.color || '#4caf50',
@@ -83,12 +106,13 @@ function widthPercent(task: any) {
   </div>
 </template>
 
+
 <style scoped>
 .gantt {
   position: relative;
   height: 400px;
   border: 1px solid #ccc;
-  overflow: hidden;
+  overflow: auto;
   background-color: #111827;
 }
 
@@ -100,10 +124,8 @@ function widthPercent(task: any) {
 
 .gantt-bar {
   position: absolute;
-  top: 10px; /* provisoire: toutes les barres sur la même ligne */
   height: 24px;
   border-radius: 4px;
-  margin-top: 4px;
   display: flex;
   align-items: center;
 }
@@ -114,4 +136,5 @@ function widthPercent(task: any) {
   padding: 2px 4px;
   white-space: nowrap;
 }
+
 </style>

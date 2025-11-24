@@ -1,6 +1,6 @@
 <!-- src/components/GanttChart.vue -->
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, nextTick } from 'vue';
 import type { Task } from '../gristBridge';
 
 const props = defineProps<{ tasks: Task[] }>();
@@ -11,6 +11,9 @@ const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 const dayStartHour = ref<number>(0);
 // décalage temporel (en nombre de périodes)
 const offset = ref<number>(0);
+
+// ref sur le corps pour le scroll
+const bodyRef = ref<HTMLDivElement | null>(null);
 
 declare const grist: any;
 
@@ -114,8 +117,7 @@ function topPx(task: any) {
 // 4) Bornes réelles ou date du jour (pour pointer au minimum sur aujourd'hui)
 const rawMinDate = computed(() => {
   if (!tasksWithLane.value.length) {
-    // aucune tâche → on pointe sur aujourd'hui
-    return new Date();
+    return new Date(); // aucune tâche → base = aujourd'hui
   }
   return new Date(
     Math.min(...tasksWithLane.value.map((t) => t.startDate.getTime())),
@@ -123,8 +125,7 @@ const rawMinDate = computed(() => {
 });
 const rawMaxDate = computed(() => {
   if (!tasksWithLane.value.length) {
-    // aucune tâche → on prend aussi aujourd'hui
-    return new Date();
+    return new Date(); // aucune tâche → base = aujourd'hui
   }
   return new Date(
     Math.max(...tasksWithLane.value.map((t) => t.endDate.getTime())),
@@ -133,6 +134,9 @@ const rawMaxDate = computed(() => {
 
 /**
  * minDate / maxDate de base, NON décalées
+ * - week    : exactement une semaine LUNDI -> DIMANCHE
+ * - month   : du lundi de la 1ère semaine du mois au dimanche de la dernière semaine du même mois
+ * - quarter : logique trimestre arrondie à la semaine
  */
 const baseMinDate = computed(() => {
   const d = new Date(rawMinDate.value);
@@ -269,8 +273,9 @@ function getIsoWeekNumber(date: Date): number {
 }
 
 // 5) Buckets
-type Bucket = { left: number; width: number; label: string };
+type Bucket = { left: number; width: number; label: string; date?: Date };
 
+// semaine : ligne1 semaines, ligne2 jours
 const weekWeekBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'week') return res;
@@ -312,11 +317,12 @@ const weekDayBuckets = computed<Bucket[]>(() => {
       ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
       100;
     const width = (oneDay / totalMs.value) * 100;
-    res.push({ left, width, label });
+    res.push({ left, width, label, date: bucketStart });
   }
   return res;
 });
 
+// mois : ligne1 mois, ligne2 semaines
 const monthMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'month') return res;
@@ -371,6 +377,7 @@ const monthWeekBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
+// trimestre : une seule ligne de mois
 const quarterMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'quarter') return res;
@@ -415,6 +422,35 @@ function goNext() {
 function resetOffset() {
   offset.value = 0;
 }
+
+/**
+ * Centrage auto sur la date du jour à l'ouverture
+ */
+onMounted(async () => {
+  await nextTick();
+
+  const body = bodyRef.value;
+  if (!body) return;
+
+  const gantt = body.closest('.gantt');
+  if (!gantt) return;
+
+  const header = gantt.querySelector('.gantt-header');
+  if (!header) return;
+
+  const todayCell = header.querySelector(
+    '.gantt-header-cell.is-today',
+  ) as HTMLElement | null;
+  if (!todayCell) return;
+
+  const bodyRect = body.getBoundingClientRect();
+  const cellRect = todayCell.getBoundingClientRect();
+
+  const offsetLeft = cellRect.left - bodyRect.left + body.scrollLeft;
+
+  body.scrollLeft =
+    offsetLeft - body.clientWidth / 2 + todayCell.offsetWidth / 2;
+});
 </script>
 
 <template>
@@ -479,7 +515,7 @@ function resetOffset() {
         </button>
       </div>
 
-      <!-- En-tête -->
+      <!-- En-tête multi-niveaux -->
       <div class="gantt-header">
         <!-- Ligne 1 -->
         <div class="gantt-header-row">
@@ -524,6 +560,11 @@ function resetOffset() {
               v-for="b in weekDayBuckets"
               :key="'wd-' + b.left"
               class="gantt-header-cell"
+              :class="{
+                'is-today':
+                  b.date &&
+                  b.date.toDateString() === new Date().toDateString(),
+              }"
               :style="{ left: b.left + '%', width: b.width + '%' }"
             >
               {{ b.label }}
@@ -544,7 +585,7 @@ function resetOffset() {
       </div>
 
       <!-- Corps -->
-      <div class="gantt-body">
+      <div class="gantt-body" ref="bodyRef">
         <div v-if="!tasksWithLane.length" class="gantt-empty">
           Aucune tâche à afficher
         </div>
@@ -670,6 +711,13 @@ function resetOffset() {
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+}
+
+/* surlignage du jour courant */
+.gantt-header-cell.is-today {
+  background-color: #1d4ed8;
+  color: #f9fafb;
+  font-weight: 600;
 }
 
 .gantt-body {

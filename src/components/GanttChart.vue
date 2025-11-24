@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.6';
+const WIDGET_VERSION = 'V0.0.7';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -27,12 +27,12 @@ type Lane = {
   isGroupHeader: boolean;
 };
 
-// géométrie de base (tout à 25px sauf les lanes)
-const baseLaneHeight = 24;   // tu peux mettre 25 si tu veux des lanes exactement à la même hauteur
-const laneGap = 4;
+// géométrie de base
+const baseLaneHeight = 24;          // hauteur d'une ligne (task/personne)
+const laneGap = 10;                 // ESPACE entre les lignes
 const toolbarHeight = 25;           // ligne des boutons
 const headerRowHeight = 25;         // chaque ligne du header
-const headerHeight = headerRowHeight * 3; // 3 lignes (vue Semaine / Mois / Trimestre)
+const headerHeight = headerRowHeight * 3; // 3 lignes (vue Semaine/Mois/Trimestre)
 const lanesTopOffset = toolbarHeight + headerHeight; // 25 + 75 = 100
 
 const offset = ref<number>(0);
@@ -607,7 +607,7 @@ function onBodyScroll(e: Event) {
         @change-scale="(s) => { timeScale = s; offset = 0; }"
       />
 
-      <!-- Header multi-lignes (3 lignes à 25px) -->
+      <!-- Header multi-lignes (3 x 25px) -->
       <div class="gantt-header">
         <!-- Ligne 1 : semaines / mois / trimestres -->
         <div class="gantt-header-row">
@@ -676,20 +676,18 @@ function onBodyScroll(e: Event) {
         </div>
 
         <!-- Ligne 3 : Matin / Après-midi / Nuit (semaine uniquement) -->
-        <div v-if="timeScale === 'week'" class="gantt-header-row">
-          <div
-            v-for="b in timeOfDayBuckets"
-            :key="'tod-' + b.left + '-' + b.slot"
-            class="gantt-header-cell gantt-header-cell-tod"
-            :style="{ left: b.left + '%', width: b.width + '%' }"
-          >
-            {{ b.label }}
-          </div>
+        <div class="gantt-header-row">
+          <template v-if="timeScale === 'week'">
+            <div
+              v-for="b in timeOfDayBuckets"
+              :key="'tod-' + b.left + '-' + b.slot"
+              class="gantt-header-cell gantt-header-cell-tod"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
         </div>
-
-        <!-- Pour Mois / Trimestre, on peut laisser la 3e ligne vide
-             ou l'utiliser pour afficher les jours par exemple. -->
-        <div v-else class="gantt-header-row"></div>
       </div>
 
       <!-- Corps -->

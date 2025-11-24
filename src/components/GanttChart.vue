@@ -12,8 +12,9 @@ const dayStartHour = ref<number>(0);
 // décalage temporel (en nombre de périodes)
 const offset = ref<number>(0);
 
-// ref sur le corps pour le scroll horizontal
+// refs pour le scroll synchronisé
 const bodyRef = ref<HTMLDivElement | null>(null);
+const sidebarRef = ref<HTMLDivElement | null>(null);
 
 declare const grist: any;
 
@@ -156,7 +157,7 @@ const baseMaxDate = computed(() => {
   const d = new Date(referenceDate.value);
 
   if (timeScale.value === 'week') {
-    const day = d.getDay(); // 0 = dimanche
+    const day = d.getDay();
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     const monday = new Date(d);
     monday.setDate(monday.getDate() + diffToMonday);
@@ -224,7 +225,7 @@ const maxDate = computed(() => {
   if (timeScale.value === 'month') {
     const d = new Date(baseMaxDate.value);
     d.setMonth(d.getMonth() + k);
-    const day = d.getDay(); // 0 = dimanche
+    const day = d.getDay();
     const diffToSunday = 7 - (day === 0 ? 7 : day);
     d.setDate(d.getDate() + diffToSunday);
     d.setHours(23, 59, 59, 999);
@@ -267,7 +268,7 @@ function getIsoWeekNumber(date: Date): number {
     Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
   );
   const dayNum = tmp.getUTCDay() || 7;
-  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+  tmp.setUTCDate(tmp.getUTCDay() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(((+tmp - +yearStart) / 86400000 + 1) / 7);
   return weekNo;
@@ -452,27 +453,49 @@ onMounted(async () => {
   body.scrollLeft =
     offsetLeft - body.clientWidth / 2 + todayCell.offsetWidth / 2;
 });
+
+/**
+ * Scroll vertical synchronisé sidebar <-> corps
+ */
+function onBodyScroll(e: Event) {
+  const body = e.target as HTMLDivElement;
+  if (sidebarRef.value) {
+    sidebarRef.value.scrollTop = body.scrollTop;
+  }
+}
 </script>
 
 <template>
   <div class="gantt-wrapper">
     <!-- Colonne de gauche -->
-    <div class="gantt-sidebar">
+    <div class="gantt-sidebar" ref="sidebarRef">
       <div v-if="!lanes.length" class="gantt-empty">
         Aucune tâche
       </div>
-      <div
-        v-else
-        v-for="lane in lanes"
-        :key="lane.index"
-        class="gantt-lane-label"
-        :class="{
-          'gantt-lane-group': lane.isGroupHeader,
-          'gantt-lane-sub': !lane.isGroupHeader,
-        }"
-        :style="{ top: laneTopPx(lane.index) + 'px' }"
-      >
-        {{ lane.label || '—' }}
+      <div v-else class="gantt-sidebar-inner">
+        <div
+          v-for="lane in lanes"
+          :key="lane.index"
+          class="gantt-lane-label"
+          :class="{
+            'gantt-lane-group': lane.isGroupHeader,
+            'gantt-lane-sub': !lane.isGroupHeader,
+          }"
+          :style="{ top: laneTopPx(lane.index) + 'px', height: laneHeight + 'px' }"
+        >
+          {{ lane.label || '—' }}
+        </div>
+
+        <!-- fond des lanes, même que dans le corps -->
+        <div
+          v-for="lane in lanes"
+          :key="'sbg-' + lane.index"
+          class="gantt-lane-bg-sidebar"
+          :style="{
+            top: laneTopPx(lane.index) + 'px',
+            height: laneHeight + 'px'
+          }"
+        ></div>
       </div>
     </div>
 
@@ -586,7 +609,7 @@ onMounted(async () => {
       </div>
 
       <!-- Corps -->
-      <div class="gantt-body" ref="bodyRef">
+      <div class="gantt-body" ref="bodyRef" @scroll="onBodyScroll">
         <div v-if="!tasksWithLane.length" class="gantt-empty">
           Aucune tâche à afficher
         </div>
@@ -627,7 +650,7 @@ onMounted(async () => {
 <style scoped>
 .gantt-wrapper {
   display: grid;
-  grid-template-columns: 160px 1fr;
+  grid-template-columns: 200px 1fr;
   height: 400px;
   border: 1px solid #374151;
   background-color: #111827;
@@ -639,17 +662,21 @@ onMounted(async () => {
 .gantt-sidebar {
   position: relative;
   border-right: 1px solid #374151;
-  padding-left: 4px;
   overflow: hidden;
+}
+
+.gantt-sidebar-inner {
+  position: relative;
+  min-height: 100%;
 }
 
 .gantt-lane-label {
   position: absolute;
-  height: 24px;
   display: flex;
   align-items: center;
   font-size: 12px;
   white-space: nowrap;
+  padding-left: 8px;
 }
 
 .gantt-lane-group {
@@ -658,9 +685,19 @@ onMounted(async () => {
 }
 
 .gantt-lane-sub {
-  padding-left: 12px;
+  padding-left: 20px;
   font-size: 11px;
   color: #d1d5db;
+}
+
+/* fond des lanes côté sidebar */
+.gantt-lane-bg-sidebar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background-color: #020617;
+  border-top: 1px solid #111827;
+  z-index: -1;
 }
 
 /* Zone de droite */

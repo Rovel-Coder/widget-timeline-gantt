@@ -5,8 +5,9 @@ import type { Task } from '../gristBridge';
 
 const props = defineProps<{ tasks: Task[] }>();
 
-// 0) Choix de l'échelle de temps
+// 0) Choix de l'échelle de temps et de l'heure de début de journée (vue semaine)
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
+const dayStartHour = ref<number>(0); // 0 = minuit
 
 // 1) Tâches avec dates JS
 const parsedTasks = computed(() =>
@@ -152,17 +153,25 @@ const timeBuckets = computed<TimeBucket[]>(() => {
   const oneDayMs = 24 * 60 * 60 * 1000;
 
   if (timeScale.value === 'week') {
-    // 1 case = 1 jour
+    // 1 case = 1 jour, centré sur dayStartHour
     for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDayMs) {
-      const d = new Date(ts);
-      const label = d.toLocaleDateString('fr-FR', {
+      const base = new Date(ts);
+      const bucketStart = new Date(base);
+      bucketStart.setHours(dayStartHour.value, 0, 0, 0);
+
+      const label = bucketStart.toLocaleDateString('fr-FR', {
         weekday: 'short',
         day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
       });
+
       const left =
-        ((d.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
+        ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
+        100;
       const width = (oneDayMs / totalMs.value) * 100;
-      buckets.push({ start: d, label, left, width });
+
+      buckets.push({ start: bucketStart, label, left, width });
     }
   } else if (timeScale.value === 'month') {
     // 1 case = 1 semaine
@@ -229,7 +238,7 @@ const timeBuckets = computed<TimeBucket[]>(() => {
 
     <!-- Zone de droite : toolbar + en-tête + barres -->
     <div class="gantt">
-      <!-- Toolbar échelle de temps -->
+      <!-- Toolbar échelle de temps + début de journée -->
       <div class="gantt-toolbar">
         <button
           class="gantt-btn"
@@ -252,6 +261,19 @@ const timeBuckets = computed<TimeBucket[]>(() => {
         >
           Trimestre
         </button>
+
+        <label class="gantt-hour-label">
+          Début journée
+          <select v-model.number="dayStartHour" class="gantt-hour-select">
+            <option :value="0">00 h</option>
+            <option :value="6">06 h</option>
+            <option :value="7">07 h</option>
+            <option :value="8">08 h</option>
+            <option :value="9">09 h</option>
+            <option :value="10">10 h</option>
+            <option :value="12">12 h</option>
+          </select>
+        </label>
       </div>
 
       <!-- En-tête temporel -->
@@ -366,6 +388,24 @@ const timeBuckets = computed<TimeBucket[]>(() => {
 .gantt-btn.is-active {
   background: #2563eb;
   border-color: #2563eb;
+}
+
+.gantt-hour-label {
+  margin-left: auto;
+  font-size: 11px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gantt-hour-select {
+  background: #111827;
+  color: #e5e7eb;
+  border: 1px solid #4b5563;
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 1px 4px;
 }
 
 /* En-tête temporel */

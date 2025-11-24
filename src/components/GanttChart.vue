@@ -179,7 +179,7 @@ function widthPercent(task: any) {
             backgroundColor: task.color || '#4caf50',
           }"
         >
-          <!-- Texte de la barre : Titre -->
+          <!-- Texte de la barre : construit à partir de "Contenu" -->
           <span class="gantt-label">
             {{ task.name || 'Tâche' }}
           </span>
@@ -257,4 +257,3 @@ function widthPercent(task: any) {
   white-space: nowrap;
 }
 </style>
-

@@ -1,3 +1,4 @@
+<!-- src/components/GanttChart.vue -->
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { Task } from '../gristBridge';
@@ -17,13 +18,13 @@ const parsedTasks = computed(() =>
     }),
 );
 
-// 2) Attribution d'un index de ligne par valeur de groupBy (Personnel)
+// 2) Attribution d'un index de ligne par valeur de groupBy (ex : Personnel)
 const tasksWithLane = computed(() => {
   const laneByGroup = new Map<string, number>();
   let nextLane = 0;
 
   return parsedTasks.value.map((t) => {
-    const key = (t.groupBy ?? '').toString(); // ex: "Romain"
+    const key = (t.groupBy ?? '').toString();
     if (!laneByGroup.has(key)) {
       laneByGroup.set(key, nextLane++);
     }
@@ -32,7 +33,13 @@ const tasksWithLane = computed(() => {
   });
 });
 
-// 3) Calcul de l'échelle de temps
+// Hauteur verticale d'une ligne
+const laneHeight = 28; // px (24px barre + marges)
+function topPx(task: any) {
+  return 4 + task.laneIndex * laneHeight;
+}
+
+// 3) Échelle de temps
 const minDate = computed(() => {
   if (!tasksWithLane.value.length) {
     return new Date();
@@ -72,48 +79,102 @@ function widthPercent(task: any) {
   );
 }
 
-// 4) Hauteur d'une ligne pour positionner les barres verticalement
-const laneHeight = 28; // px (24px barre + marges)
-function topPx(task: any) {
-  return 4 + task.laneIndex * laneHeight;
+// 4) Lignes pour la sidebar gauche
+const lanes = computed(() => {
+  const byIndex = new Map<number, string>();
+  for (const t of tasksWithLane.value) {
+    const idx = t.laneIndex as number;
+    if (!byIndex.has(idx)) {
+      byIndex.set(idx, (t.groupBy ?? '').toString());
+    }
+  }
+  return Array.from(byIndex.entries())
+    .map(([index, label]) => ({ index, label }))
+    .sort((a, b) => a.index - b.index);
+});
+
+function laneTopPx(laneIndex: number) {
+  return 4 + laneIndex * laneHeight;
 }
 </script>
 
-
 <template>
-  <div class="gantt">
-    <div v-if="!tasksWithLane.length" class="gantt-empty">
-      Aucune tâche à afficher
+  <div class="gantt-wrapper">
+    <!-- Colonne de gauche : libellés des lignes -->
+    <div class="gantt-sidebar">
+      <div v-if="!tasksWithLane.length" class="gantt-empty">
+        Aucune tâche
+      </div>
+      <div
+        v-else
+        v-for="lane in lanes"
+        :key="lane.index"
+        class="gantt-lane-label"
+        :style="{ top: laneTopPx(lane.index) + 'px' }"
+      >
+        {{ lane.label || '—' }}
+      </div>
     </div>
 
-    <div v-else>
-      <div
-        v-for="task in tasksWithLane"
-        :key="task.id"
-        class="gantt-bar"
-        :style="{
-          top: topPx(task) + 'px',
-          left: leftPercent(task) + '%',
-          width: widthPercent(task) + '%',
-          backgroundColor: task.color || '#4caf50',
-        }"
-      >
-        <span class="gantt-label">
-          {{ task.name || task.groupBy || 'Tâche' }}
-        </span>
+    <!-- Zone de droite : barres temporelles -->
+    <div class="gantt">
+      <div v-if="!tasksWithLane.length" class="gantt-empty">
+        Aucune tâche à afficher
+      </div>
+
+      <div v-else>
+        <div
+          v-for="task in tasksWithLane"
+          :key="task.id"
+          class="gantt-bar"
+          :style="{
+            top: topPx(task) + 'px',
+            left: leftPercent(task) + '%',
+            width: widthPercent(task) + '%',
+            backgroundColor: task.color || '#4caf50',
+          }"
+        >
+          <span class="gantt-label">
+            {{ task.name || task.groupBy || 'Tâche' }}
+          </span>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
-
 <style scoped>
+.gantt-wrapper {
+  display: grid;
+  grid-template-columns: 160px 1fr; /* 160px pour les labels, le reste pour le Gantt */
+  height: 400px;
+  border: 1px solid #374151;
+  background-color: #111827;
+  overflow: hidden;
+  color: #e5e7eb;
+}
+
+/* Colonne de gauche */
+.gantt-sidebar {
+  position: relative;
+  border-right: 1px solid #374151;
+  padding-left: 4px;
+  overflow: hidden;
+}
+
+.gantt-lane-label {
+  position: absolute;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Zone de droite */
 .gantt {
   position: relative;
-  height: 400px;
-  border: 1px solid #ccc;
   overflow: auto;
-  background-color: #111827;
 }
 
 .gantt-empty {
@@ -136,5 +197,4 @@ function topPx(task: any) {
   padding: 2px 4px;
   white-space: nowrap;
 }
-
 </style>

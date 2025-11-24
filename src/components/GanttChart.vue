@@ -114,35 +114,27 @@ function topPx(task: any) {
   return laneTopPx(task.laneIndex);
 }
 
-// 4) Bornes réelles ou date du jour (pour pointer au minimum sur aujourd'hui)
-const rawMinDate = computed(() => {
+// 4) Date de référence : aujourd'hui si aucune tâche, sinon min des tâches
+const referenceDate = computed(() => {
   if (!tasksWithLane.value.length) {
-    return new Date(); // aucune tâche → base = aujourd'hui
+    return new Date(); // pas de tâches → on se base sur aujourd'hui
   }
   return new Date(
     Math.min(...tasksWithLane.value.map((t) => t.startDate.getTime())),
   );
 });
-const rawMaxDate = computed(() => {
-  if (!tasksWithLane.value.length) {
-    return new Date(); // aucune tâche → base = aujourd'hui
-  }
-  return new Date(
-    Math.max(...tasksWithLane.value.map((t) => t.endDate.getTime())),
-  );
-});
 
 /**
- * minDate / maxDate de base, NON décalées
- * - week    : exactement une semaine LUNDI -> DIMANCHE
- * - month   : du lundi de la 1ère semaine du mois au dimanche de la dernière semaine du même mois
- * - quarter : logique trimestre arrondie à la semaine
+ * Bornes de base (sans offset) selon l'échelle
+ * - week    : lundi → dimanche de la semaine de referenceDate
+ * - month   : 1er → dernier jour du mois de referenceDate
+ * - quarter : début/fin du trimestre de referenceDate
  */
 const baseMinDate = computed(() => {
-  const d = new Date(rawMinDate.value);
+  const d = new Date(referenceDate.value);
 
   if (timeScale.value === 'week') {
-    const day = d.getDay(); // 0 = dimanche, 1 = lundi ...
+    const day = d.getDay(); // 0 = dimanche, 1 = lundi...
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     d.setDate(d.getDate() + diffToMonday);
     d.setHours(0, 0, 0, 0);
@@ -151,27 +143,21 @@ const baseMinDate = computed(() => {
 
   if (timeScale.value === 'month') {
     d.setDate(1);
-    const day = d.getDay();
-    const diffToMonday = (day === 0 ? -6 : 1) - day;
-    d.setDate(d.getDate() + diffToMonday);
     d.setHours(0, 0, 0, 0);
     return d;
   }
 
   const q = Math.floor(d.getMonth() / 3);
   const qStart = new Date(d.getFullYear(), q * 3, 1);
-  const day = qStart.getDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  qStart.setDate(qStart.getDate() + diff);
   qStart.setHours(0, 0, 0, 0);
   return qStart;
 });
 
 const baseMaxDate = computed(() => {
-  const d = new Date(rawMaxDate.value);
+  const d = new Date(referenceDate.value);
 
   if (timeScale.value === 'week') {
-    const day = d.getDay();
+    const day = d.getDay(); // 0 = dimanche
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     const monday = new Date(d);
     monday.setDate(monday.getDate() + diffToMonday);
@@ -185,58 +171,76 @@ const baseMaxDate = computed(() => {
 
   if (timeScale.value === 'month') {
     const lastDayOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const day = lastDayOfMonth.getDay();
-    const diffToSunday = 7 - (day === 0 ? 7 : day);
-    lastDayOfMonth.setDate(lastDayOfMonth.getDate() + diffToSunday);
     lastDayOfMonth.setHours(23, 59, 59, 999);
     return lastDayOfMonth;
   }
 
   const q = Math.floor(d.getMonth() / 3);
   const qEnd = new Date(d.getFullYear(), q * 3 + 3, 0);
-  const day = qEnd.getDay();
-  const diff = 7 - (day === 0 ? 7 : day);
-  qEnd.setDate(qEnd.getDate() + diff);
   qEnd.setHours(23, 59, 59, 999);
   return qEnd;
 });
 
 /**
- * Application du décalage (offset) selon l'échelle
+ * Application de l'offset + extension aux lundis/dimanches pour mois / trimestre
  */
 const minDate = computed(() => {
-  const d = new Date(baseMinDate.value);
   const k = offset.value;
 
   if (timeScale.value === 'week') {
-    d.setDate(d.getDate() + k * 7);
-    return d;
+    const d = new Date(baseMinDate.value);
+    d.setDate(d.getDate() + k * 7); // décale d'un nombre de semaines
+    return d; // déjà lundi
   }
 
   if (timeScale.value === 'month') {
+    // 1er jour du mois + offset en mois, puis lundi précédent
+    const d = new Date(baseMinDate.value);
     d.setMonth(d.getMonth() + k);
+    const day = d.getDay();
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    d.setDate(d.getDate() + diffToMonday);
+    d.setHours(0, 0, 0, 0);
     return d;
   }
 
+  // trimestre
+  const d = new Date(baseMinDate.value);
   d.setMonth(d.getMonth() + k * 3);
+  const day = d.getDay();
+  const diffToMonday = (day === 0 ? -6 : 1) - day;
+  d.setDate(d.getDate() + diffToMonday);
+  d.setHours(0, 0, 0, 0);
   return d;
 });
 
 const maxDate = computed(() => {
-  const d = new Date(baseMaxDate.value);
   const k = offset.value;
 
   if (timeScale.value === 'week') {
-    d.setDate(d.getDate() + k * 7);
-    return d;
+    const d = new Date(baseMaxDate.value);
+    d.setDate(d.getDate() + k * 7); // décale d'un nombre de semaines
+    return d; // déjà dimanche
   }
 
   if (timeScale.value === 'month') {
+    // fin du mois + offset en mois, puis dimanche suivant
+    const d = new Date(baseMaxDate.value);
     d.setMonth(d.getMonth() + k);
+    const day = d.getDay(); // 0 = dimanche
+    const diffToSunday = 7 - (day === 0 ? 7 : day);
+    d.setDate(d.getDate() + diffToSunday);
+    d.setHours(23, 59, 59, 999);
     return d;
   }
 
+  // trimestre
+  const d = new Date(baseMaxDate.value);
   d.setMonth(d.getMonth() + k * 3);
+  const day = d.getDay();
+  const diffToSunday = 7 - (day === 0 ? 7 : day);
+  d.setDate(d.getDate() + diffToSunday);
+  d.setHours(23, 59, 59, 999);
   return d;
 });
 

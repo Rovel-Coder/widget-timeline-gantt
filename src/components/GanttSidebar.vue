@@ -6,10 +6,14 @@ const props = defineProps<{
     label: string;
     isGroupHeader: boolean;
   }[];
+  // hauteur de base d’une lane (24)
   laneHeight: number;
   laneGap: number;
   lanesTopOffset: number;
+  // même fonction que dans GanttChart.vue
   laneTopFn: (laneIndex: number) => number;
+  // nouvelle fonction passée par le parent : hauteur réelle d'une lane
+  laneHeightFn: (laneIndex: number) => number;
 }>();
 </script>
 
@@ -27,18 +31,18 @@ const props = defineProps<{
       Aucune tâche
     </div>
     <div v-else class="gantt-sidebar-inner">
-      <!-- fond des lanes (assez haut pour plusieurs étages) -->
+      <!-- fond des lanes, hauteur dynamique -->
       <div
         v-for="lane in props.lanes"
         :key="'sbg-' + lane.index"
         class="gantt-lane-bg-sidebar"
         :style="{
           top: props.laneTopFn(lane.index) + 'px',
-          height: props.laneHeight * 3 + 'px'
+          height: props.laneHeightFn(lane.index) + 'px'
         }"
       ></div>
 
-      <!-- labels -->
+      <!-- labels (une seule ligne, centrée sur le haut de la lane) -->
       <div
         v-for="lane in props.lanes"
         :key="lane.index"

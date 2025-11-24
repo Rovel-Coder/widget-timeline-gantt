@@ -14,15 +14,27 @@ const props = defineProps<{ tasks: Task[] }>();
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 const dayStartHour = ref<number>(0);
 
-// géométrie
-const laneHeight = 24;
+// --- Types internes ---
+type ParsedTask = Task & {
+  startDate: Date;
+  endDate: Date;
+};
+
+type Lane = {
+  index: number;
+  groupBy: string;
+  groupBy2: string;
+  label: string;
+  isGroupHeader: boolean;
+};
+
+// géométrie de base
+const baseLaneHeight = 24;   // hauteur minimale d'une lane
 const laneGap = 4;
 const toolbarHeight = 24;
 const headerRowHeight = 18;
 const headerHeight = headerRowHeight * 2;
 const lanesTopOffset = toolbarHeight + headerHeight;
-// hauteur relative de chaque "étage" dans une lane
-const subRowHeightFactor = 0.8;
 
 const offset = ref<number>(0);
 
@@ -42,7 +54,7 @@ if (typeof grist !== 'undefined') {
 }
 
 // 1) Tâches avec dates JS
-const parsedTasks = computed(() =>
+const parsedTasks = computed<ParsedTask[]>(() =>
   props.tasks
     .filter((t) => t.start && t.duration != null)
     .map((t) => {
@@ -57,19 +69,11 @@ const parsedTasks = computed(() =>
 );
 
 // 2) Lanes hiérarchiques
-type Lane = {
-  index: number;
-  groupBy: string;
-  groupBy2: string;
-  label: string;
-  isGroupHeader: boolean;
-};
-
 const lanes = computed<Lane[]>(() => {
   const result: Lane[] = [];
   let nextIndex = 0;
 
-  const byGroup = new Map<string, typeof parsedTasks.value>();
+  const byGroup = new Map<string, ParsedTask[]>();
   for (const t of parsedTasks.value) {
     const g1 = (t.groupBy ?? '').toString();
     if (!byGroup.has(g1)) byGroup.set(g1, []);
@@ -103,38 +107,41 @@ const lanes = computed<Lane[]>(() => {
   return result;
 });
 
-// 3) Tâches avec laneIndex + subRowIndex (empilement des chevauchements)
-const tasksWithLane = computed(() => {
+// 3) Tâches avec laneIndex + subRowIndex (empilement)
+type TaskWithLane = ParsedTask & {
+  laneIndex: number;
+  subRowIndex: number;
+};
+
+const tasksWithLane = computed<TaskWithLane[]>(() => {
   const byKey = new Map<string, number>();
   for (const lane of lanes.value) {
     const key = `${lane.groupBy}||${lane.groupBy2}`;
     byKey.set(key, lane.index);
   }
 
-  const base = parsedTasks.value.map((t) => {
+  const base: TaskWithLane[] = parsedTasks.value.map((t) => {
     const g1 = (t.groupBy ?? '').toString();
     const g2 = (t.groupBy2 ?? '').toString();
     const key = `${g1}||${g2}`;
     const laneIndex = byKey.get(key) ?? 0;
-    return { ...t, laneIndex };
+    return { ...t, laneIndex, subRowIndex: 0 };
   });
 
-  type TaskWithRow = (typeof base)[number] & { subRowIndex: number };
-  const result: TaskWithRow[] = [];
+  const result: TaskWithLane[] = [];
+  const byLane = new Map<number, TaskWithLane[]>();
 
-  const byLane = new Map<number, typeof base>();
   for (const t of base) {
     if (!byLane.has(t.laneIndex)) byLane.set(t.laneIndex, []);
     byLane.get(t.laneIndex)!.push(t);
   }
 
   for (const [, tasks] of byLane.entries()) {
-  const sorted = [...tasks].sort(
-    (a, b) => a.startDate.getTime() - b.startDate.getTime(),
-  );
+    const sorted = [...tasks].sort(
+      (a, b) => a.startDate.getTime() - b.startDate.getTime(),
+    );
 
-  const rows: { tasks: { start: number; end: number }[] }[] = [];
-
+    const rows: { tasks: { start: number; end: number }[] }[] = [];
 
     for (const t of sorted) {
       const start = t.startDate.getTime();
@@ -167,13 +174,37 @@ const tasksWithLane = computed(() => {
   return result;
 });
 
-function laneTopPx(laneIndex: number) {
-  return lanesTopOffset + laneGap + laneIndex * (laneHeight + laneGap);
+// nombre d’étages (rows) par lane
+const laneRowCount = computed<Record<number, number>>(() => {
+  const map: Record<number, number> = {};
+  for (const t of tasksWithLane.value) {
+    const current = map[t.laneIndex] ?? 0;
+    const needed = t.subRowIndex + 1;
+    if (needed > current) map[t.laneIndex] = needed;
+  }
+  return map;
+});
+
+// hauteur réelle d’une lane
+function laneHeightFor(laneIndex: number): number {
+  const rows = laneRowCount.value[laneIndex] ?? 1;
+  return baseLaneHeight * rows;
 }
-function topPx(task: any) {
-  const baseTop = laneTopPx(task.laneIndex);
-  const subOffset = task.subRowIndex * (laneHeight * subRowHeightFactor);
-  return baseTop + subOffset;
+
+// top d’une lane (somme des hauteurs précédentes + gaps)
+function laneTopPx(laneIndex: number) {
+  let top = lanesTopOffset;
+  for (let i = 0; i < laneIndex; i++) {
+    top += laneHeightFor(i) + laneGap;
+  }
+  return top;
+}
+
+// top d’une barre
+function topPx(task: TaskWithLane) {
+  const laneTop = laneTopPx(task.laneIndex);
+  const rowH = baseLaneHeight;
+  return laneTop + task.subRowIndex * rowH;
 }
 
 // 4) Dates / échelles
@@ -292,14 +323,14 @@ const totalMs = computed(() => {
   return diff || 1;
 });
 
-function leftPercent(task: any) {
+function leftPercent(task: TaskWithLane) {
   return (
     ((task.startDate.getTime() - minDate.value.getTime()) /
       totalMs.value) *
     100
   );
 }
-function widthPercent(task: any) {
+function widthPercent(task: TaskWithLane) {
   return (
     ((task.endDate.getTime() - task.startDate.getTime()) /
       totalMs.value) *
@@ -307,20 +338,17 @@ function widthPercent(task: any) {
   );
 }
 
-// numéro de semaine ISO corrigé
+// numéro de semaine ISO
 function getIsoWeekNumber(date: Date): number {
   const tmp = new Date(
     Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
   );
-
-  const day = tmp.getUTCDay() || 7; // 1..7 (lundi..dimanche)
-  tmp.setUTCDate(tmp.getUTCDate() + 4 - day); // jeudi de la semaine ISO
-
+  const day = tmp.getUTCDay() || 7;
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - day);
   const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(
     ((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
   );
-
   return weekNo;
 }
 
@@ -512,10 +540,11 @@ function onBodyScroll(e: Event) {
       ref="sidebarRef"
       :version="WIDGET_VERSION"
       :lanes="lanes"
-      :lane-height="laneHeight"
+      :lane-height="baseLaneHeight"
       :lane-gap="laneGap"
       :lanes-top-offset="lanesTopOffset"
       :lane-top-fn="laneTopPx"
+      :lane-height-fn="laneHeightFor"
     />
 
     <!-- Zone de droite -->
@@ -542,18 +571,18 @@ function onBodyScroll(e: Event) {
           Aucune tâche à afficher
         </div>
         <div v-else class="gantt-body-inner">
-          <!-- fond des lanes, assez haut pour 3 étages -->
+          <!-- fond des lanes avec hauteur dynamique -->
           <div
             v-for="lane in lanes"
             :key="'bg-' + lane.index"
             class="gantt-lane-bg"
             :style="{
               top: laneTopPx(lane.index) + 'px',
-              height: laneHeight * 3 + 'px'
+              height: laneHeightFor(lane.index) + 'px'
             }"
           ></div>
 
-          <!-- Barres de tâches (avec empilement) -->
+          <!-- Barres de tâches (stackées) -->
           <div
             v-for="task in tasksWithLane"
             :key="task.id"

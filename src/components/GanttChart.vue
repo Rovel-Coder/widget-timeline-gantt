@@ -2,31 +2,30 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick } from 'vue';
 import type { Task } from '../gristBridge';
+import GanttSidebar from './GanttSidebar.vue';
+import GanttToolbar from './GanttToolbar.vue';
+import GanttHeader from './GanttHeader.vue';
 
-// Version du widget : à mettre à jour manuellement
-const WIDGET_VERSION = 'V0.0.1';
+// Version du widget
+const WIDGET_VERSION = 'V0.0.2';
 
 const props = defineProps<{ tasks: Task[] }>();
 
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 const dayStartHour = ref<number>(0);
 
-// géométrie verticale
+// géométrie
 const laneHeight = 24;
 const laneGap = 4;
-
-// hauteurs des zones de droite
-const toolbarHeight = 24;      // hauteur visuelle approx. de .gantt-toolbar
-const headerRowHeight = 18;    // hauteur d’une ligne dans .gantt-header-row
-const headerHeight = headerRowHeight * 2; // 36 px pour les 2 lignes de timeline
-
-// on commence les lanes sous toolbar + header
+const toolbarHeight = 24;
+const headerRowHeight = 18;
+const headerHeight = headerRowHeight * 2;
 const lanesTopOffset = toolbarHeight + headerHeight;
 
 const offset = ref<number>(0);
 
 const bodyRef = ref<HTMLDivElement | null>(null);
-const sidebarRef = ref<HTMLDivElement | null>(null);
+const sidebarRef = ref<InstanceType<typeof GanttSidebar> | null>(null);
 
 declare const grist: any;
 
@@ -116,7 +115,6 @@ const tasksWithLane = computed(() => {
   });
 });
 
-// Y des lanes = même offset que la zone de droite (toolbar + header)
 function laneTopPx(laneIndex: number) {
   return lanesTopOffset + laneGap + laneIndex * (laneHeight + laneGap);
 }
@@ -124,7 +122,7 @@ function topPx(task: any) {
   return laneTopPx(task.laneIndex);
 }
 
-// --- Dates / échelles identiques à ta version précédente ---
+// Dates / échelles
 const referenceDate = computed(() => {
   if (!tasksWithLane.value.length) {
     return new Date();
@@ -400,6 +398,7 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
+// Navigation
 function goPrev() {
   offset.value -= 1;
 }
@@ -438,7 +437,11 @@ onMounted(async () => {
 function onBodyScroll(e: Event) {
   const body = e.target as HTMLDivElement;
   if (sidebarRef.value) {
-    sidebarRef.value.scrollTop = body.scrollTop;
+    // juste synchronisation verticale
+    const sidebarEl = (sidebarRef.value.$el as HTMLElement) || null;
+    if (sidebarEl) {
+      sidebarEl.scrollTop = body.scrollTop;
+    }
   }
 }
 </script>
@@ -446,151 +449,34 @@ function onBodyScroll(e: Event) {
 <template>
   <div class="gantt-wrapper">
     <!-- Colonne de gauche -->
-    <div class="gantt-sidebar" ref="sidebarRef">
-      <!-- zone alignée avec la toolbar de droite -->
-      <div class="gantt-sidebar-toolbar">
-        <span class="gantt-version">{{ WIDGET_VERSION }}</span>
-      </div>
-
-      <!-- zone alignée avec les 2 lignes de timeline -->
-      <div class="gantt-sidebar-header">
-        <div class="gantt-sidebar-header-row"></div>
-        <div class="gantt-sidebar-header-row"></div>
-      </div>
-
-      <div v-if="!lanes.length" class="gantt-empty">
-        Aucune tâche
-      </div>
-      <div v-else class="gantt-sidebar-inner">
-        <div
-          v-for="lane in lanes"
-          :key="'sbg-' + lane.index"
-          class="gantt-lane-bg-sidebar"
-          :style="{
-            top: laneTopPx(lane.index) + 'px',
-            height: laneHeight + 'px'
-          }"
-        ></div>
-
-        <div
-          v-for="lane in lanes"
-          :key="lane.index"
-          class="gantt-lane-label"
-          :class="{
-            'gantt-lane-group': lane.isGroupHeader,
-            'gantt-lane-sub': !lane.isGroupHeader,
-          }"
-          :style="{
-            top: laneTopPx(lane.index) + 'px',
-            height: laneHeight + 'px'
-          }"
-        >
-          {{ lane.label || '—' }}
-        </div>
-      </div>
-    </div>
+    <GanttSidebar
+      ref="sidebarRef"
+      :version="WIDGET_VERSION"
+      :lanes="lanes"
+      :lane-height="laneHeight"
+      :lane-gap="laneGap"
+      :lanes-top-offset="lanesTopOffset"
+    />
 
     <!-- Zone de droite -->
     <div class="gantt">
-      <!-- Toolbar -->
-      <div class="gantt-toolbar">
-        <button class="gantt-btn" @click="goPrev">◀</button>
-        <button class="gantt-btn" @click="resetOffset">Aujourd'hui</button>
-        <button class="gantt-btn" @click="goNext">▶</button>
+      <GanttToolbar
+        :time-scale="timeScale"
+        @prev="goPrev"
+        @next="goNext"
+        @today="resetOffset"
+        @change-scale="(s) => { timeScale = s; offset = 0; }"
+      />
 
-        <div class="gantt-toolbar-sep" />
+      <GanttHeader
+        :time-scale="timeScale"
+        :week-week-buckets="weekWeekBuckets"
+        :week-day-buckets="weekDayBuckets"
+        :month-month-buckets="monthMonthBuckets"
+        :month-week-buckets="monthWeekBuckets"
+        :quarter-month-buckets="quarterMonthBuckets"
+      />
 
-        <button
-          class="gantt-btn"
-          :class="{ 'is-active': timeScale === 'week' }"
-          @click="timeScale = 'week'; offset = 0"
-        >
-          Semaine
-        </button>
-        <button
-          class="gantt-btn"
-          :class="{ 'is-active': timeScale === 'month' }"
-          @click="timeScale = 'month'; offset = 0"
-        >
-          Mois
-        </button>
-        <button
-          class="gantt-btn"
-          :class="{ 'is-active': timeScale === 'quarter' }"
-          @click="timeScale = 'quarter'; offset = 0"
-        >
-          Trimestre
-        </button>
-      </div>
-
-      <!-- En-tête multi-lignes -->
-      <div class="gantt-header">
-        <div class="gantt-header-row">
-          <template v-if="timeScale === 'week'">
-            <div
-              v-for="b in weekWeekBuckets"
-              :key="'ww-' + b.left"
-              class="gantt-header-cell"
-              :style="{ left: b.left + '%', width: b.width + '%' }"
-            >
-              {{ b.label }}
-            </div>
-          </template>
-
-          <template v-else-if="timeScale === 'month'">
-            <div
-              v-for="b in monthMonthBuckets"
-              :key="'mm-' + b.left"
-              class="gantt-header-cell"
-              :style="{ left: b.left + '%', width: b.width + '%' }"
-            >
-              {{ b.label }}
-            </div>
-          </template>
-
-          <template v-else>
-            <div
-              v-for="b in quarterMonthBuckets"
-              :key="'qm-' + b.left"
-              class="gantt-header-cell"
-              :style="{ left: b.left + '%', width: b.width + '%' }"
-            >
-              {{ b.label }}
-            </div>
-          </template>
-        </div>
-
-        <div class="gantt-header-row">
-          <template v-if="timeScale === 'week'">
-            <div
-              v-for="b in weekDayBuckets"
-              :key="'wd-' + b.left"
-              class="gantt-header-cell"
-              :class="{
-                'is-today':
-                  b.date &&
-                  b.date.toDateString() === new Date().toDateString(),
-              }"
-              :style="{ left: b.left + '%', width: b.width + '%' }"
-            >
-              {{ b.label }}
-            </div>
-          </template>
-
-          <template v-else-if="timeScale === 'month'">
-            <div
-              v-for="b in monthWeekBuckets"
-              :key="'mw-' + b.left"
-              class="gantt-header-cell"
-              :style="{ left: b.left + '%', width: b.width + '%' }"
-            >
-              {{ b.label }}
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <!-- Corps -->
       <div class="gantt-body" ref="bodyRef" @scroll="onBodyScroll">
         <div v-if="!tasksWithLane.length" class="gantt-empty">
           Aucune tâche à afficher
@@ -638,78 +524,7 @@ function onBodyScroll(e: Event) {
   color: #e5e7eb;
 }
 
-/* COLONNE GAUCHE */
-.gantt-sidebar {
-  position: relative;
-  border-right: 1px solid #374151;
-  overflow: hidden;
-}
-
-/* zone alignée avec la toolbar de droite */
-.gantt-sidebar-toolbar {
-  height: 24px; /* doit matcher toolbarHeight */
-  border-bottom: 1px solid #374151;
-  background-color: #020617;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-}
-
-/* Version du widget */
-.gantt-version {
-  font-size: 10px;
-  color: #9ca3af;
-}
-
-/* zone alignée avec les 2 lignes de timeline */
-.gantt-sidebar-header {
-  height: 36px; /* 2 * headerRowHeight */
-  border-bottom: 1px solid #374151;
-  background-color: #111827;
-}
-
-.gantt-sidebar-header-row {
-  height: 18px;
-  border-bottom: 1px solid #111827;
-  background-color: #020617;
-}
-
-.gantt-sidebar-inner {
-  position: relative;
-  min-height: 100%;
-}
-
-.gantt-lane-bg-sidebar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  background-color: #020617;
-  border-top: 1px solid #111827;
-  z-index: 0;
-}
-
-.gantt-lane-label {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  font-size: 12px;
-  white-space: nowrap;
-  padding-left: 8px;
-  z-index: 1;
-}
-
-.gantt-lane-group {
-  font-weight: 600;
-  color: #f9fafb;
-}
-
-.gantt-lane-sub {
-  padding-left: 20px;
-  font-size: 11px;
-  color: #d1d5db;
-}
-
-/* COLONNE DROITE */
+/* zone droite */
 .gantt {
   position: relative;
   display: flex;
@@ -717,74 +532,6 @@ function onBodyScroll(e: Event) {
   height: 100%;
 }
 
-/* Toolbar */
-.gantt-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-bottom: 1px solid #374151;
-  background-color: #020617;
-  height: 24px; /* doit matcher toolbarHeight */
-  box-sizing: border-box;
-}
-
-.gantt-toolbar-sep {
-  width: 1px;
-  height: 18px;
-  background: #374151;
-  margin: 0 4px;
-}
-
-.gantt-btn {
-  border: 1px solid #4b5563;
-  background: #111827;
-  color: #e5e7eb;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.gantt-btn.is-active {
-  background: #2563eb;
-  border-color: #2563eb;
-}
-
-/* En-tête multi-lignes */
-.gantt-header {
-  position: relative;
-  border-bottom: 1px solid #374151;
-  background-color: #111827;
-  color: #9ca3af;
-  font-size: 10px;
-}
-
-.gantt-header-row {
-  position: relative;
-  height: 18px; /* doit matcher headerRowHeight */
-  border-bottom: 1px solid #111827;
-  overflow: hidden;
-}
-
-.gantt-header-cell {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-left: 1px solid #1f2937;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-}
-
-.gantt-header-cell.is-today {
-  background-color: #1d4ed8;
-  color: #f9fafb;
-  font-weight: 600;
-}
-
-/* Corps */
 .gantt-body {
   position: relative;
   flex: 1;
@@ -796,6 +543,7 @@ function onBodyScroll(e: Event) {
   min-height: 100%;
 }
 
+/* fond des lanes côté droite */
 .gantt-lane-bg {
   position: absolute;
   left: 0;

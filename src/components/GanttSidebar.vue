@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+
 const props = defineProps<{
   version: string;
   lanes: {
@@ -12,6 +14,22 @@ const props = defineProps<{
   laneTopFn: (laneIndex: number) => number;
   laneHeightFn: (laneIndex: number) => number;
 }>();
+
+// refs sur les labels pour mesurer leur hauteur
+const labelRefs = ref<HTMLElement[]>([]);
+
+function setLabelRef(el: HTMLElement | null, idx: number) {
+  if (el) {
+    labelRefs.value[idx] = el;
+  }
+}
+
+// exposé au parent (GanttChart) pour récupérer les hauteurs
+const getLaneLabelHeights = () => {
+  return labelRefs.value.map((el) => el?.offsetHeight ?? props.laneHeight);
+};
+
+defineExpose({ getLaneLabelHeights });
 </script>
 
 <template>
@@ -41,7 +59,7 @@ const props = defineProps<{
 
       <!-- labels -->
       <div
-        v-for="lane in props.lanes"
+        v-for="(lane, i) in props.lanes"
         :key="lane.index"
         class="gantt-lane-label"
         :class="{
@@ -52,6 +70,7 @@ const props = defineProps<{
           top: props.laneTopFn(lane.index) + 'px',
           height: props.laneHeight + 'px'
         }"
+        :ref="(el) => setLabelRef(el as HTMLElement | null, i)"
       >
         {{ lane.label || '—' }}
       </div>
@@ -110,7 +129,8 @@ const props = defineProps<{
   font-size: 12px;
   padding-left: 8px;
   z-index: 1;
-  /* MISE À JOUR: permettre le retour à la ligne */
+
+  /* retour à la ligne + protection débordement */
   white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;

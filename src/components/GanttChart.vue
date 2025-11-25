@@ -70,8 +70,7 @@ const headerHeight = computed(() => {
   if (timeScale.value === 'week') {
     return headerRowHeight * 3; // Semaine / Jour / Créneaux
   }
-  return headerRowHeight * 3;   // Mois : Mois / Semaine / Jour
-                                // Trimestre : Trimestre / Mois / Semaine
+  return headerRowHeight * 3;   // Mois / Trimestre
 });
 
 const lanesTopOffset = computed(() => {
@@ -82,6 +81,9 @@ const offset = ref<number>(0);
 
 const bodyRef = ref<HTMLDivElement | null>(null);
 const sidebarRef = ref<InstanceType<typeof GanttSidebar> | null>(null);
+
+// hauteurs réelles des labels de lanes
+const laneLabelHeights = ref<Record<number, number>>({});
 
 // 1) Tâches avec dates JS
 const parsedTasks = computed<ParsedTask[]>(() =>
@@ -215,14 +217,18 @@ const laneRowCount = computed<Record<number, number>>(() => {
   return map;
 });
 
-// hauteur réelle d’une lane (tous les étages + gaps internes)
+// hauteur réelle d’une lane (tous les étages + label wrap)
 function laneHeightFor(laneIndex: number): number {
   const rows = laneRowCount.value[laneIndex] ?? 1;
-  if (rows <= 1) return baseLaneHeight;
-  return rows * baseLaneHeight + (rows - 1) * subRowGap;
+  const barsHeight =
+    rows <= 1 ? baseLaneHeight : rows * baseLaneHeight + (rows - 1) * subRowGap;
+
+  const labelHeight = laneLabelHeights.value[laneIndex] ?? baseLaneHeight;
+  return Math.max(barsHeight, labelHeight);
 }
 
 // top d’une lane (somme des hauteurs précédentes + gaps externes)
+// NE PAS TOUCHER pour garder l’écart avec le header
 function laneTopPx(laneIndex: number) {
   let top = 10;
   for (let i = 0; i < laneIndex; i++) {
@@ -358,6 +364,7 @@ const totalMs = computed(() => {
   return diff || 1;
 });
 
+// Clamp des tâches sur la plage visible
 type VisibleTask = TaskWithLane & {
   visibleStart: Date;
   visibleEnd: Date;
@@ -593,7 +600,7 @@ const monthDayBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// Trimestre (ligne 1 - vue trimestre) = regroupement de 3 mois
+// Trimestre (ligne 1 - vue trimestre)
 const quarterMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'quarter') return res;
@@ -659,9 +666,19 @@ function resetOffset() {
   offset.value = 0;
 }
 
-// centrage sur aujourd’hui
+// centrage sur aujourd’hui + mesure des labels
 onMounted(async () => {
   await nextTick();
+
+  // mesure des labels de lanes pour adapter la hauteur
+  if (sidebarRef.value && typeof (sidebarRef.value as any).getLaneLabelHeights === 'function') {
+    const heights: number[] = (sidebarRef.value as any).getLaneLabelHeights();
+    const map: Record<number, number> = {};
+    lanes.value.forEach((lane, i) => {
+      map[lane.index] = heights[i] ?? baseLaneHeight;
+    });
+    laneLabelHeights.value = map;
+  }
 
   const body = bodyRef.value;
   if (!body) return;
@@ -688,7 +705,7 @@ onMounted(async () => {
 function onBodyScroll(e: Event) {
   const body = e.target as HTMLDivElement;
   if (sidebarRef.value) {
-    const sidebarEl = sidebarRef.value.$el as HTMLElement;
+    const sidebarEl = (sidebarRef.value as any).$el as HTMLElement;
     if (sidebarEl) {
       sidebarEl.scrollTop = body.scrollTop;
     }
@@ -1022,7 +1039,7 @@ async function onTaskClick(task: TaskWithLane) {
   filter: brightness(1.1);
 }
 
-/* MISE À JOUR: le texte de la tâche ne déborde plus */
+/* Titre de tâche tronqué dans la barre */
 .gantt-label {
   font-size: 11px;
   color: white;
@@ -1031,6 +1048,5 @@ async function onTaskClick(task: TaskWithLane) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  pointer-events: none; /* visible uniquement via le clic sur la barre */
 }
 </style>

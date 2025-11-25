@@ -748,20 +748,13 @@ async function onTaskClick(task: TaskWithLane) {
 
 <template>
   <div class="gantt-wrapper">
-    <!-- Colonne de gauche -->
-    <GanttSidebar
-      ref="sidebarRef"
-      :version="WIDGET_VERSION"
-      :lanes="lanes"
-      :lane-height="baseLaneHeight"
-      :lane-gap="laneOuterGap"
-      :lanes-top-offset="lanesTopOffset"
-      :lane-top-fn="laneTopPx"
-      :lane-height-fn="laneHeightFor"
-    />
+    <!-- Zone A : carré haut-gauche (version) -->
+    <div class="gantt-top-left">
+      <span class="gantt-version">{{ WIDGET_VERSION }}</span>
+    </div>
 
-    <!-- Zone de droite -->
-    <div class="gantt">
+    <!-- Zone B + D : partie droite (toolbar + header + body) -->
+    <div class="gantt-right">
       <GanttToolbar
         :time-scale="timeScale"
         @prev="goPrev"
@@ -886,7 +879,7 @@ async function onTaskClick(task: TaskWithLane) {
         </div>
       </div>
 
-      <!-- Corps -->
+      <!-- Corps (zone scrollable, sous le header) -->
       <div class="gantt-body" ref="bodyRef" @scroll="onBodyScroll">
         <div v-if="!visibleTasks.length" class="gantt-empty">
           Aucune tâche à afficher
@@ -955,25 +948,67 @@ async function onTaskClick(task: TaskWithLane) {
         </div>
       </div>
     </div>
+
+    <!-- Zone C : sidebar sous le carré haut-gauche -->
+    <GanttSidebar
+      class="gantt-sidebar"
+      ref="sidebarRef"
+      :version="WIDGET_VERSION"
+      :lanes="lanes"
+      :lane-height="baseLaneHeight"
+      :lane-gap="laneOuterGap"
+      :lanes-top-offset="lanesTopOffset"
+      :lane-top-fn="laneTopPx"
+      :lane-height-fn="laneHeightFor"
+    />
   </div>
 </template>
+
 
 <style scoped>
 .gantt-wrapper {
   display: grid;
-  grid-template-columns: 200px 1fr;
-  height: 95%;
+  grid-template-columns: 200px 1fr; /* 200px pour colonne gauche, reste pour droite */
+  grid-template-rows: 105px 1fr;    /* 105px pour la bande haute, reste pour le corps */
+  height: 100%;
   border: 1px solid #374151;
   background-color: #111827;
-  overflow: hidden; /* pas de scroll global entre les deux colonnes */
+  overflow: hidden;
   color: #e5e7eb;
 }
 
-.gantt {
+/* Zone haut-gauche (carré 200x105) */
+.gantt-top-left {
+  grid-column: 1;
+  grid-row: 1;
+  background-color: #020617;
+  border-right: 1px solid #374151;
+  border-bottom: 1px solid #374151;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  box-sizing: border-box;
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+/* Partie droite (toolbar + header + body) */
+.gantt-right {
+  grid-column: 2;
+  grid-row: 1 / span 2; /* occupe toute la hauteur à droite */
   position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
+}
+
+/* Sidebar en bas à gauche */
+.gantt-sidebar {
+  grid-column: 1;
+  grid-row: 2;
+  border-right: 1px solid #374151;
+  overflow: hidden; /* aucune scrollbar visible dans la sidebar */
 }
 
 /* Header */
@@ -1025,16 +1060,16 @@ async function onTaskClick(task: TaskWithLane) {
   background-color: rgba(234, 179, 8, 0.08);
 }
 
-/* Corps */
+/* Corps : seule zone scrollable */
 .gantt-body {
   position: relative;
   flex: 1;
-  overflow: auto;  /* seule zone avec scroll */
+  overflow: auto;
 }
 
 .gantt-body-inner {
   position: relative;
-  min-height: 100%;
+  height: auto;
 }
 
 .gantt-lane-bg {
@@ -1117,3 +1152,4 @@ async function onTaskClick(task: TaskWithLane) {
   cursor: pointer;
 }
 </style>
+

@@ -55,7 +55,7 @@ function setScale(scale: 'week' | 'month' | 'quarter') {
   padding: 4px 6px;
   border-bottom: 1px solid #374151;
   background-color: #020617;
-  height: 24px;
+  height: 25px;
   box-sizing: border-box;
 }
 

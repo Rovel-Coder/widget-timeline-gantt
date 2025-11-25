@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.49';
+const WIDGET_VERSION = 'V0.0.50';
 
 const props = defineProps<{ tasks: Task[] }>();
 

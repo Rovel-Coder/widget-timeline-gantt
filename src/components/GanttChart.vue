@@ -1038,7 +1038,7 @@ async function onTaskClick(task: TaskWithLane) {
 
 .gantt-bar {
   position: absolute;
-  height: 100%;
+  height: 24px;
   border-radius: 4px;
   display: flex;
   align-items: center;

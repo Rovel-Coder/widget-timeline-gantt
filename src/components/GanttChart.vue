@@ -90,20 +90,20 @@ const isPopupOpen = ref(false);
 type TaskWithLaneForPopup = ParsedTask & { laneIndex: number; subRowIndex: number };
 const selectedTask = ref<TaskWithLaneForPopup | null>(null);
 
-// 1) Tâches avec dates JS
+// 1) Tâches avec dates JS (durée en HEURES)
 const parsedTasks = computed<ParsedTask[]>(() =>
   props.tasks
     .filter((t) => t.start && t.duration != null)
     .map((t) => {
       const startDate = new Date(t.start as string);
-      const hours = Number(t.duration);
-      const days = hours / 24;
+      const hours = Number(t.duration);             // durée en heures
       const endDate = new Date(
-        startDate.getTime() + days * 24 * 60 * 60 * 1000,
+        startDate.getTime() + hours * 60 * 60 * 1000 // + heures en millisecondes
       );
       return { ...t, startDate, endDate };
     }),
 );
+
 
 // 2) Lanes hiérarchiques
 const lanes = computed<Lane[]>(() => {
@@ -241,29 +241,31 @@ function laneTopPx(laneIndex: number) {
   return top;
 }
 
-// top d’une barre (empilement interne)
+// top d’une barre (empilement interne, centré dans la lane)
 function topPx(task: TaskWithLane) {
-const laneTop = laneTopPx(task.laneIndex);
-const laneH = laneHeightFor(task.laneIndex);
-const rows = laneRowCount.value[task.laneIndex] ?? 1;
-const rowHeight = baseLaneHeight; // même valeur que la hauteur de .gantt-bar
-const rowIndex = task.subRowIndex ?? 0;
+  const laneTop = laneTopPx(task.laneIndex);
+  const laneH = laneHeightFor(task.laneIndex);
+  const rows = laneRowCount.value[task.laneIndex] ?? 1;
 
-// espace total occupé par les rangées de barres
-const rowsBlockHeight =
-rows * rowHeight + (rows - 1) * subRowGap;
+  const rowHeight = 24; // même valeur que .gantt-bar { height: 24px; }
+  const rowIndex = task.subRowIndex ?? 0;
 
-// marge au‑dessus du bloc de barres pour centrer dans la lane
-const topMargin = (laneH - rowsBlockHeight) / 2;
+  // espace total occupé par les rangées de barres
+  const rowsBlockHeight =
+    rows * rowHeight + (rows - 1) * subRowGap;
 
-// top de la rangée courante
-const rowTop =
-laneTop +
-topMargin +
-rowIndex * (rowHeight + subRowGap);
+  // marge au‑dessus du bloc de barres pour centrer dans la lane
+  const topMargin = (laneH - rowsBlockHeight) / 2;
 
-return rowTop;
+  // top de la rangée courante
+  const rowTop =
+    laneTop +
+    topMargin +
+    rowIndex * (rowHeight + subRowGap);
+
+  return rowTop;
 }
+
 
 // 4) Dates / échelles
 const referenceDate = computed(() => {
@@ -960,7 +962,7 @@ async function onTaskClick(task: TaskWithLane) {
 .gantt-wrapper {
   display: grid;
   grid-template-columns: 200px 1fr;
-  min-height: 400px;
+  height: 100%;
   border: 1px solid #374151;
   background-color: #111827;
   overflow: hidden;

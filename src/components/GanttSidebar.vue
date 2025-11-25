@@ -76,7 +76,7 @@ defineExpose({ getLaneLabelHeights });
 .gantt-sidebar {
   position: relative;
   border-right: 1px solid #374151;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .gantt-sidebar-toolbar {

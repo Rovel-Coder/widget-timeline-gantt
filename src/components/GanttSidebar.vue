@@ -15,7 +15,6 @@ const props = defineProps<{
   laneHeightFn: (laneIndex: number) => number;
 }>();
 
-// refs sur les labels pour mesurer leur hauteur
 const labelRefs = ref<HTMLElement[]>([]);
 
 function setLabelRef(el: HTMLElement | null, idx: number) {
@@ -24,7 +23,6 @@ function setLabelRef(el: HTMLElement | null, idx: number) {
   }
 }
 
-// exposé au parent (GanttChart) pour récupérer les hauteurs
 const getLaneLabelHeights = () => {
   return labelRefs.value.map((el) => el?.offsetHeight ?? props.laneHeight);
 };
@@ -34,19 +32,15 @@ defineExpose({ getLaneLabelHeights });
 
 <template>
   <div class="gantt-sidebar">
-    <!-- barre alignée avec la toolbar de droite -->
     <div class="gantt-sidebar-toolbar">
       <span class="gantt-version">{{ props.version }}</span>
     </div>
-
-    <!-- placeholder (3 lignes de header à 25px) -->
     <div class="gantt-sidebar-placeholder"></div>
 
     <div v-if="!props.lanes.length" class="gantt-empty">
       Aucune tâche
     </div>
     <div v-else class="gantt-sidebar-inner">
-      <!-- fond des lanes, hauteur dynamique -->
       <div
         v-for="lane in props.lanes"
         :key="'sbg-' + lane.index"
@@ -56,8 +50,6 @@ defineExpose({ getLaneLabelHeights });
           height: props.laneHeightFn(lane.index) + 'px'
         }"
       ></div>
-
-      <!-- labels -->
       <div
         v-for="(lane, i) in props.lanes"
         :key="lane.index"
@@ -72,7 +64,9 @@ defineExpose({ getLaneLabelHeights });
         }"
         :ref="(el) => setLabelRef(el as HTMLElement | null, i)"
       >
-        {{ lane.label || '—' }}
+        <span class="gantt-lane-label-content">
+          {{ lane.label || '—' }}
+        </span>
       </div>
     </div>
   </div>
@@ -85,7 +79,6 @@ defineExpose({ getLaneLabelHeights });
   overflow: hidden;
 }
 
-/* 25px comme la toolbar de droite */
 .gantt-sidebar-toolbar {
   height: 25px;
   background-color: #020617;
@@ -101,13 +94,11 @@ defineExpose({ getLaneLabelHeights });
   color: #9ca3af;
 }
 
-/* 3 lignes de header à 25px => 75px */
 .gantt-sidebar-placeholder {
   height: 77.5px;
   background-color: #111827;
 }
 
-/* contenu des lanes */
 .gantt-sidebar-inner {
   position: relative;
   min-height: 100%;
@@ -124,17 +115,25 @@ defineExpose({ getLaneLabelHeights });
 
 .gantt-lane-label {
   position: absolute;
+  width: 100%;
   display: flex;
-  align-items: center;
+  align-items: center; /* Ajoute centré vertical de span, sur toute la hauteur */
   font-size: 12px;
   padding-left: 8px;
   z-index: 1;
-
-  /* retour à la ligne + protection débordement */
+  /* Multiligne, pas de débordement horizontal */
   white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
   padding-right: 4px;
+}
+
+.gantt-lane-label-content {
+  width: 100%;
+  line-height: 16px;
+  display: block;
+  word-break: break-word;
+  /* Pour un bon centrage vertical même avec plusieurs lignes, utiliser margin auto : utilisé dans flex + align-items: center */
 }
 
 .gantt-lane-group {

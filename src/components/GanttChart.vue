@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.50';
+const WIDGET_VERSION = 'V0.0.51';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -70,8 +70,7 @@ const headerHeight = computed(() => {
   if (timeScale.value === 'week') {
     return headerRowHeight * 3; // Semaine / Jour / Créneaux
   }
-  return headerRowHeight * 3;   // Mois : Mois / Semaine / Jour
-                                // Trimestre : Trimestre / Mois / Semaine
+  return headerRowHeight * 3;   // Mois / Semaine / Jour ou Trimestre / Mois / Semaine
 });
 
 const lanesTopOffset = computed(() => {
@@ -222,7 +221,7 @@ function laneHeightFor(laneIndex: number): number {
   return rows * baseLaneHeight + (rows - 1) * subRowGap;
 }
 
-// top d’une lane (somme des hauteurs précédentes + gaps externes)
+// top d’une lane (somme des hauteurs précédentes + gaps externes, relatif au début du bloc lanes)
 function laneTopPx(laneIndex: number) {
   let top = 10;
   for (let i = 0; i < laneIndex; i++) {
@@ -231,9 +230,9 @@ function laneTopPx(laneIndex: number) {
   return top;
 }
 
-// top d’une barre (empilement interne)
+// top d’une barre (empilement interne, avec offset global)
 function topPx(task: TaskWithLane) {
-  const laneTop = laneTopPx(task.laneIndex);
+  const laneTop = lanesTopOffset.value + laneTopPx(task.laneIndex);
   const rowIndex = task.subRowIndex ?? 0;
 
   if (rowIndex === 0) {
@@ -563,7 +562,7 @@ const monthDayBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// Trimestre (ligne 1 - vue trimestre) = regroupement de 3 mois
+// Trimestre (ligne 1 - vue trimestre)
 const quarterMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'quarter') return res;
@@ -680,14 +679,16 @@ async function onTaskClick(task: TaskWithLane) {
     return;
   }
 
-  // on récupère l’enregistrement courant via l’API plugin, si dispo [web:18][web:23]
   let currentValue: unknown = '';
   if (typeof grist.fetchSelectedRecord === 'function') {
     const currentRecord = await grist.fetchSelectedRecord(task.id);
     currentValue = currentRecord ? currentRecord[col] ?? '' : '';
   }
 
-  const newValue = window.prompt(`Nouvelle valeur pour ${col}`, String(currentValue ?? ''));
+  const newValue = window.prompt(
+    `Nouvelle valeur pour ${col}`,
+    String(currentValue ?? ''),
+  );
   if (newValue === null) {
     return; // annulé
   }
@@ -856,7 +857,7 @@ async function onTaskClick(task: TaskWithLane) {
             :key="'bg-' + lane.index"
             class="gantt-lane-bg"
             :style="{
-              top: laneTopPx(lane.index) + 'px',
+              top: (lanesTopOffset + laneTopPx(lane.index)) + 'px',
               height: laneHeightFor(lane.index) + 'px'
             }"
           ></div>

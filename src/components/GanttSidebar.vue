@@ -34,7 +34,7 @@ const props = defineProps<{
         :key="'sbg-' + lane.index"
         class="gantt-lane-bg-sidebar"
         :style="{
-          top: props.laneTopFn(lane.index) + 'px',
+          top: (props.lanesTopOffset + props.laneTopFn(lane.index)) + 'px',
           height: props.laneHeightFn(lane.index) + 'px'
         }"
       ></div>
@@ -49,7 +49,7 @@ const props = defineProps<{
           'gantt-lane-sub': !lane.isGroupHeader,
         }"
         :style="{
-          top: props.laneTopFn(lane.index) + 'px',
+          top: (props.lanesTopOffset + props.laneTopFn(lane.index)) + 'px',
           height: props.laneHeight + 'px'
         }"
       >
@@ -70,7 +70,6 @@ const props = defineProps<{
 .gantt-sidebar-toolbar {
   height: 25px;
   background-color: #020617;
-  border-bottom: 1px solid #374151;
   display: flex;
   align-items: center;
   padding: 0 8px;

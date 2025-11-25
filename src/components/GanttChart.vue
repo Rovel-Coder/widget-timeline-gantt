@@ -946,7 +946,7 @@ async function onTaskClick(task: TaskWithLane) {
 <style scoped>
 .gantt-wrapper {
   display: grid;
-  grid-template-columns: 150px 1fr;
+  grid-template-columns: 200px 1fr;
   min-height: 400px;
   border: 1px solid #374151;
   background-color: #111827;

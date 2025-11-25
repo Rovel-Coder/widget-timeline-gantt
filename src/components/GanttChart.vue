@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.51';
+const WIDGET_VERSION = 'V0.0.52';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -58,7 +58,7 @@ type Lane = {
 };
 
 // géométrie
-const baseLaneHeight = 24;              // hauteur d'un étage
+const baseLaneHeight = 25;              // hauteur d'un étage
 const laneOuterGap = 5;                 // espace entre 2 lanes
 const subRowGap = 2.5;                  // espace interne entre étages
 const headerToFirstLaneGap = 5;         // entre header et 1re lane
@@ -981,7 +981,7 @@ async function onTaskClick(task: TaskWithLane) {
 
 .gantt-bar {
   position: absolute;
-  height: 24px;
+  height: 25px;
   border-radius: 4px;
   display: flex;
   align-items: center;

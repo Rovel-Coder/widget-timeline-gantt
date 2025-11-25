@@ -358,16 +358,49 @@ const totalMs = computed(() => {
   return diff || 1;
 });
 
-function leftPercent(task: TaskWithLane) {
+// --- Clamp des tâches sur la plage visible ---
+type VisibleTask = TaskWithLane & {
+  visibleStart: Date;
+  visibleEnd: Date;
+};
+
+const visibleTasks = computed<VisibleTask[]>(() => {
+  const startView = minDate.value.getTime();
+  const endView = maxDate.value.getTime();
+
+  return tasksWithLane.value
+    .map((t) => {
+      const taskStart = t.startDate.getTime();
+      const taskEnd = t.endDate.getTime();
+
+      // entièrement hors de la vue => on ignore
+      if (taskEnd <= startView || taskStart >= endView) {
+        return null;
+      }
+
+      const visibleStartMs = Math.max(taskStart, startView);
+      const visibleEndMs = Math.min(taskEnd, endView);
+
+      return {
+        ...t,
+        visibleStart: new Date(visibleStartMs),
+        visibleEnd: new Date(visibleEndMs),
+      };
+    })
+    .filter((t): t is VisibleTask => t !== null);
+});
+
+// fonctions de positionnement basées sur les dates clampées
+function leftPercentVisible(task: VisibleTask) {
   return (
-    ((task.startDate.getTime() - minDate.value.getTime()) /
+    ((task.visibleStart.getTime() - minDate.value.getTime()) /
       totalMs.value) *
     100
   );
 }
-function widthPercent(task: TaskWithLane) {
+function widthPercentVisible(task: VisibleTask) {
   return (
-    ((task.endDate.getTime() - task.startDate.getTime()) /
+    ((task.visibleEnd.getTime() - task.visibleStart.getTime()) /
       totalMs.value) *
     100
   );
@@ -848,7 +881,7 @@ async function onTaskClick(task: TaskWithLane) {
 
       <!-- Corps -->
       <div class="gantt-body" ref="bodyRef" @scroll="onBodyScroll">
-        <div v-if="!tasksWithLane.length" class="gantt-empty">
+        <div v-if="!visibleTasks.length" class="gantt-empty">
           Aucune tâche à afficher
         </div>
         <div v-else class="gantt-body-inner">
@@ -865,13 +898,13 @@ async function onTaskClick(task: TaskWithLane) {
 
           <!-- Barres de tâches (stackées) -->
           <div
-            v-for="task in tasksWithLane"
+            v-for="task in visibleTasks"
             :key="task.id"
             class="gantt-bar"
             :style="{
               top: topPx(task) + 'px',
-              left: leftPercent(task) + '%',
-              width: widthPercent(task) + '%',
+              left: leftPercentVisible(task) + '%',
+              width: widthPercentVisible(task) + '%',
               backgroundColor: task.color || '#4caf50',
             }"
             @click="onTaskClick(task)"

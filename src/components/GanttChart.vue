@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.69';
+const WIDGET_VERSION = 'V0.0.70';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -1038,7 +1038,7 @@ async function onTaskClick(task: TaskWithLane) {
 
 .gantt-bar {
   position: absolute;
-  height: 25px;
+  height: 100%;
   border-radius: 4px;
   display: flex;
   align-items: center;

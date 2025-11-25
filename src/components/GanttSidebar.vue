@@ -28,7 +28,7 @@ const props = defineProps<{
       Aucune tâche
     </div>
     <div v-else class="gantt-sidebar-inner">
-      <!-- fond des lanes -->
+      <!-- fond des lanes, hauteur dynamique -->
       <div
         v-for="lane in props.lanes"
         :key="'sbg-' + lane.index"
@@ -64,7 +64,6 @@ const props = defineProps<{
   position: relative;
   border-right: 1px solid #374151;
   overflow: hidden;
-  height: 100%;
 }
 
 /* 25px comme la toolbar de droite */
@@ -85,7 +84,7 @@ const props = defineProps<{
 
 /* 3 lignes de header à 25px => 75px */
 .gantt-sidebar-placeholder {
-  height: 75px;          /* aligné sur le header pour éviter le décalage */
+  height: 77.5px;
   background-color: #111827;
 }
 

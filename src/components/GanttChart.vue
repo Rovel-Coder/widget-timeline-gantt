@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.73';
+const WIDGET_VERSION = 'V0.0.74';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -962,10 +962,10 @@ async function onTaskClick(task: TaskWithLane) {
 .gantt-wrapper {
   display: grid;
   grid-template-columns: 200px 1fr;
-  height: 100%;
+  height: 95%;
   border: 1px solid #374151;
   background-color: #111827;
-  overflow: hidden;
+  overflow: hidden; /* pas de scroll global entre les deux colonnes */
   color: #e5e7eb;
 }
 
@@ -1029,7 +1029,7 @@ async function onTaskClick(task: TaskWithLane) {
 .gantt-body {
   position: relative;
   flex: 1;
-  overflow: auto;
+  overflow: auto;  /* seule zone avec scroll */
 }
 
 .gantt-body-inner {

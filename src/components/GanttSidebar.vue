@@ -76,7 +76,19 @@ defineExpose({ getLaneLabelHeights });
 .gantt-sidebar {
   position: relative;
   border-right: 1px solid #374151;
-  overflow: auto;
+  overflow: hidden; /* aucune scrollbar dans la sidebar */
+}
+
+/* sécurité : si une scrollbar apparaît quand même, on la cache */
+/* WebKit (Chrome, Edge, Safari) */
+.gantt-sidebar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* Firefox */
+.gantt-sidebar {
+  scrollbar-width: none;
 }
 
 .gantt-sidebar-toolbar {

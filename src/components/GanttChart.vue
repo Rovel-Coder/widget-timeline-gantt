@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.8';
+const WIDGET_VERSION = 'V0.0.9';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -35,8 +35,18 @@ const headerToFirstLaneGap = 10;        // entre header et 1re lane
 
 const toolbarHeight = 25;
 const headerRowHeight = 25;
-const headerHeight = headerRowHeight * 3; // 3 lignes
-const lanesTopOffset = toolbarHeight + headerHeight + headerToFirstLaneGap;
+
+const headerHeight = computed(() => {
+  if (timeScale.value === 'week') {
+    return headerRowHeight * 3; // Semaine / Jour / Créneaux
+  }
+  return headerRowHeight * 3;   // Mois : Mois / Semaine / Jour
+                                // Trimestre : Trimestre / Mois / Semaine
+});
+
+const lanesTopOffset = computed(() => {
+  return toolbarHeight + headerHeight.value + headerToFirstLaneGap;
+});
 
 const offset = ref<number>(0);
 
@@ -196,7 +206,7 @@ function laneHeightFor(laneIndex: number): number {
 
 // top d’une lane (somme des hauteurs précédentes + gaps externes)
 function laneTopPx(laneIndex: number) {
-  let top = lanesTopOffset;
+  let top = lanesTopOffset.value;
   for (let i = 0; i < laneIndex; i++) {
     top += laneHeightFor(i) + laneOuterGap;
   }
@@ -411,7 +421,7 @@ const timeOfDayBuckets = computed<TimeOfDayBucket[]>(() => {
   return res;
 });
 
-// buckets existants
+// Semaine (ligne 1 - vue semaine)
 const weekWeekBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'week') return res;
@@ -434,6 +444,7 @@ const weekWeekBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
+// Jours pour la vue Semaine (ligne 2)
 const weekDayBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'week') return res;
@@ -458,9 +469,10 @@ const weekDayBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
+// Mois (ligne 1 - vue mois)
 const monthMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
-  if (timeScale.value !== 'month') return res;
+  if (timeScale.value !== 'month' && timeScale.value !== 'quarter') return res;
   const start = new Date(minDate.value);
   const end = new Date(maxDate.value);
   const oneDay = 24 * 60 * 60 * 1000;
@@ -490,6 +502,7 @@ const monthMonthBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
+// Semaines (ligne 2 - vue mois)
 const monthWeekBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'month') return res;
@@ -512,9 +525,31 @@ const monthWeekBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
+// Jours (ligne 3 - vue mois)
+const monthDayBuckets = computed<Bucket[]>(() => {
+  const res: Bucket[] = [];
+  if (timeScale.value !== 'month') return res;
+
+  const start = new Date(minDate.value);
+  const end = new Date(maxDate.value);
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDay) {
+    const d = new Date(ts);
+    const label = d.toLocaleDateString('fr-FR', { day: '2-digit' });
+    const left =
+      ((d.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
+    const width = (oneDay / totalMs.value) * 100;
+    res.push({ left, width, label, date: d });
+  }
+  return res;
+});
+
+// Trimestre (ligne 1 - vue trimestre) = regroupement de 3 mois
 const quarterMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'quarter') return res;
+
   const start = new Date(minDate.value);
   const end = new Date(maxDate.value);
   const oneDay = 24 * 60 * 60 * 1000;
@@ -526,10 +561,7 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
     const monthEnd = new Date(d);
     monthEnd.setMonth(monthEnd.getMonth() + 1, 0);
 
-    const label = monthStart.toLocaleDateString('fr-FR', {
-      month: 'short',
-      year: '2-digit',
-    });
+    const label = monthStart.toLocaleDateString('fr-FR', { month: 'short' });
 
     const left =
       ((monthStart.getTime() - minDate.value.getTime()) / totalMs.value) *
@@ -540,6 +572,31 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
 
     res.push({ left, width, label });
     d.setMonth(d.getMonth() + 1, 1);
+  }
+  return res;
+});
+
+// Mois (ligne 2 - vue trimestre) = réutilise monthMonthBuckets
+// Semaines (ligne 3 - vue trimestre)
+const quarterWeekBuckets = computed<Bucket[]>(() => {
+  const res: Bucket[] = [];
+  if (timeScale.value !== 'quarter') return res;
+
+  const start = new Date(minDate.value);
+  const end = new Date(maxDate.value);
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  let weekStart = new Date(start);
+  while (weekStart <= end) {
+    const weekEnd = new Date(weekStart.getTime() + 6 * oneDay);
+    const weekNumber = getIsoWeekNumber(weekStart);
+    const left =
+      ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
+    const width =
+      ((weekEnd.getTime() - weekStart.getTime() + oneDay) / totalMs.value) *
+      100;
+    res.push({ left, width, label: `S${weekNumber}` });
+    weekStart = new Date(weekStart.getTime() + 7 * oneDay);
   }
   return res;
 });
@@ -617,7 +674,7 @@ function onBodyScroll(e: Event) {
 
       <!-- Header multi-lignes (3 x 25px) -->
       <div class="gantt-header">
-        <!-- Ligne 1 : semaines / mois / trimestres -->
+        <!-- Ligne 1 : Semaine / Mois / Trimestre -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -653,7 +710,7 @@ function onBodyScroll(e: Event) {
           </template>
         </div>
 
-        <!-- Ligne 2 : jours ou semaines -->
+        <!-- Ligne 2 : Jour (semaine) / Semaine (mois) / Mois (trimestre) -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -681,15 +738,48 @@ function onBodyScroll(e: Event) {
               {{ b.label }}
             </div>
           </template>
+
+          <template v-else>
+            <div
+              v-for="b in monthMonthBuckets"
+              :key="'q2m-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
         </div>
 
-        <!-- Ligne 3 : Matin / Après-midi / Nuit (semaine uniquement) -->
+        <!-- Ligne 3 : Créneaux (semaine) / Jour (mois) / Semaine (trimestre) -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
               v-for="b in timeOfDayBuckets"
               :key="'tod-' + b.left + '-' + b.slot"
               class="gantt-header-cell gantt-header-cell-tod"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+
+          <template v-else-if="timeScale === 'month'">
+            <div
+              v-for="b in monthDayBuckets"
+              :key="'md-' + b.left"
+              class="gantt-header-cell"
+              :style="{ left: b.left + '%', width: b.width + '%' }"
+            >
+              {{ b.label }}
+            </div>
+          </template>
+
+          <template v-else>
+            <div
+              v-for="b in quarterWeekBuckets"
+              :key="'qw-' + b.left"
+              class="gantt-header-cell"
               :style="{ left: b.left + '%', width: b.width + '%' }"
             >
               {{ b.label }}

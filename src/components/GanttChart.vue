@@ -70,7 +70,8 @@ const headerHeight = computed(() => {
   if (timeScale.value === 'week') {
     return headerRowHeight * 3; // Semaine / Jour / Créneaux
   }
-  return headerRowHeight * 3;   // Mois / Semaine / Jour ou Trimestre / Mois / Semaine
+  return headerRowHeight * 3;   // Mois : Mois / Semaine / Jour
+                                // Trimestre : Trimestre / Mois / Semaine
 });
 
 const lanesTopOffset = computed(() => {
@@ -221,7 +222,7 @@ function laneHeightFor(laneIndex: number): number {
   return rows * baseLaneHeight + (rows - 1) * subRowGap;
 }
 
-// top d’une lane (somme des hauteurs précédentes + gaps externes, relatif au début du bloc lanes)
+// top d’une lane (somme des hauteurs précédentes + gaps externes)
 function laneTopPx(laneIndex: number) {
   let top = 10;
   for (let i = 0; i < laneIndex; i++) {
@@ -230,9 +231,9 @@ function laneTopPx(laneIndex: number) {
   return top;
 }
 
-// top d’une barre (empilement interne, avec offset global)
+// top d’une barre (empilement interne)
 function topPx(task: TaskWithLane) {
-  const laneTop = lanesTopOffset.value + laneTopPx(task.laneIndex);
+  const laneTop = laneTopPx(task.laneIndex);
   const rowIndex = task.subRowIndex ?? 0;
 
   if (rowIndex === 0) {
@@ -562,7 +563,7 @@ const monthDayBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// Trimestre (ligne 1 - vue trimestre)
+// Trimestre (ligne 1 - vue trimestre) = regroupement de 3 mois
 const quarterMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'quarter') return res;
@@ -857,7 +858,7 @@ async function onTaskClick(task: TaskWithLane) {
             :key="'bg-' + lane.index"
             class="gantt-lane-bg"
             :style="{
-              top: (lanesTopOffset + laneTopPx(lane.index)) + 'px',
+              top: laneTopPx(lane.index) + 'px',
               height: laneHeightFor(lane.index) + 'px'
             }"
           ></div>

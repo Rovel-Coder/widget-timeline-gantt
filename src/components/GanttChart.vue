@@ -32,7 +32,7 @@ if (typeof grist !== 'undefined') {
   const table = grist.getTable();
   tableRef.value = table;
 
-  // on ne lit que mappings pour récupérer editableCols (records est inutile ici)
+  // on ne lit que mappings pour récupérer editableCols
   grist.onRecords((_records: any[], mappings: any) => {
     if (mappings && mappings.columns && mappings.columns.editableCols) {
       const rawEditable = mappings.columns.editableCols;
@@ -58,20 +58,19 @@ type Lane = {
 };
 
 // géométrie
-const baseLaneHeight = 25;              // hauteur d'un étage
-const laneOuterGap = 5;                 // espace entre 2 lanes
-const subRowGap = 2.5;                  // espace interne entre étages
-const headerToFirstLaneGap = 5;         // entre header et 1re lane
+const baseLaneHeight = 25;
+const laneOuterGap = 5;
+const subRowGap = 2.5;
+const headerToFirstLaneGap = 5;
 
 const toolbarHeight = 25;
 const headerRowHeight = 25;
 
 const headerHeight = computed(() => {
   if (timeScale.value === 'week') {
-    return headerRowHeight * 3; // Semaine / Jour / Créneaux
+    return headerRowHeight * 3;
   }
-  return headerRowHeight * 3;   // Mois : Mois / Semaine / Jour
-                                // Trimestre : Trimestre / Mois / Semaine
+  return headerRowHeight * 3;
 });
 
 const lanesTopOffset = computed(() => {
@@ -137,7 +136,7 @@ const lanes = computed<Lane[]>(() => {
   return result;
 });
 
-// 3) Tâches avec laneIndex + subRowIndex (empilement)
+// 3) Tâches avec laneIndex + subRowIndex
 type TaskWithLane = ParsedTask & {
   laneIndex: number;
   subRowIndex: number;
@@ -204,7 +203,7 @@ const tasksWithLane = computed<TaskWithLane[]>(() => {
   return result;
 });
 
-// nombre d’étages (rows) par lane
+// nombre d’étages par lane
 const laneRowCount = computed<Record<number, number>>(() => {
   const map: Record<number, number> = {};
   for (const t of tasksWithLane.value) {
@@ -215,14 +214,12 @@ const laneRowCount = computed<Record<number, number>>(() => {
   return map;
 });
 
-// hauteur réelle d’une lane (tous les étages + gaps internes)
 function laneHeightFor(laneIndex: number): number {
   const rows = laneRowCount.value[laneIndex] ?? 1;
   if (rows <= 1) return baseLaneHeight;
   return rows * baseLaneHeight + (rows - 1) * subRowGap;
 }
 
-// top d’une lane (somme des hauteurs précédentes + gaps externes)
 function laneTopPx(laneIndex: number) {
   let top = 10;
   for (let i = 0; i < laneIndex; i++) {
@@ -231,7 +228,6 @@ function laneTopPx(laneIndex: number) {
   return top;
 }
 
-// top d’une barre (empilement interne)
 function topPx(task: TaskWithLane) {
   const laneTop = laneTopPx(task.laneIndex);
   const rowIndex = task.subRowIndex ?? 0;
@@ -358,7 +354,7 @@ const totalMs = computed(() => {
   return diff || 1;
 });
 
-// --- Clamp des tâches sur la plage visible ---
+// Clamp des tâches sur la plage visible
 type VisibleTask = TaskWithLane & {
   visibleStart: Date;
   visibleEnd: Date;
@@ -373,7 +369,6 @@ const visibleTasks = computed<VisibleTask[]>(() => {
       const taskStart = t.startDate.getTime();
       const taskEnd = t.endDate.getTime();
 
-      // entièrement hors de la vue => on ignore
       if (taskEnd <= startView || taskStart >= endView) {
         return null;
       }
@@ -390,7 +385,6 @@ const visibleTasks = computed<VisibleTask[]>(() => {
     .filter((t): t is VisibleTask => t !== null);
 });
 
-// fonctions de positionnement basées sur les dates clampées
 function leftPercentVisible(task: VisibleTask) {
   return (
     ((task.visibleStart.getTime() - minDate.value.getTime()) /
@@ -596,7 +590,7 @@ const monthDayBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// Trimestre (ligne 1 - vue trimestre) = regroupement de 3 mois
+// Trimestre (ligne 1 - vue trimestre)
 const quarterMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'quarter') return res;
@@ -698,11 +692,10 @@ function onBodyScroll(e: Event) {
   }
 }
 
-// --- Edition : clic sur une barre ---
+// Edition : clic sur une barre
 async function onTaskClick(task: TaskWithLane) {
   if (!tableRef.value) return;
 
-  // si aucune colonne éditable : on se contente de déplacer le curseur dans Grist
   if (!editableCols.value.length) {
     grist.setCursorPos({ rowId: task.id });
     return;
@@ -724,7 +717,7 @@ async function onTaskClick(task: TaskWithLane) {
     String(currentValue ?? ''),
   );
   if (newValue === null) {
-    return; // annulé
+    return;
   }
 
   const table = tableRef.value;
@@ -763,9 +756,9 @@ async function onTaskClick(task: TaskWithLane) {
         @change-scale="(s) => { timeScale = s; offset = 0; }"
       />
 
-      <!-- Header multi-lignes (3 x 25px) -->
+      <!-- Header multi-lignes -->
       <div class="gantt-header">
-        <!-- Ligne 1 : Semaine / Mois / Trimestre -->
+        <!-- Ligne 1 -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -801,7 +794,7 @@ async function onTaskClick(task: TaskWithLane) {
           </template>
         </div>
 
-        <!-- Ligne 2 : Jour (semaine) / Semaine (mois) / Mois (trimestre) -->
+        <!-- Ligne 2 -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -842,7 +835,7 @@ async function onTaskClick(task: TaskWithLane) {
           </template>
         </div>
 
-        <!-- Ligne 3 : Créneaux (semaine) / Jour (mois) / Semaine (trimestre) -->
+        <!-- Ligne 3 -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -885,7 +878,7 @@ async function onTaskClick(task: TaskWithLane) {
           Aucune tâche à afficher
         </div>
         <div v-else class="gantt-body-inner">
-          <!-- fond des lanes avec hauteur dynamique -->
+          <!-- fond des lanes -->
           <div
             v-for="lane in lanes"
             :key="'bg-' + lane.index"
@@ -896,7 +889,7 @@ async function onTaskClick(task: TaskWithLane) {
             }"
           ></div>
 
-          <!-- Barres de tâches (stackées) -->
+          <!-- Barres de tâches -->
           <div
             v-for="task in visibleTasks"
             :key="task.id"
@@ -923,11 +916,12 @@ async function onTaskClick(task: TaskWithLane) {
 .gantt-wrapper {
   display: grid;
   grid-template-columns: 150px 1fr;
-  min-height: 400px;
+  height: 100%;                 /* plein écran dans le conteneur */
   border: 1px solid #374151;
   background-color: #111827;
   overflow: hidden;
   color: #e5e7eb;
+  box-sizing: border-box;       /* évite le scroll à cause de la bordure [web:55] */
 }
 
 .gantt {

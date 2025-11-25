@@ -108,9 +108,13 @@ const props = defineProps<{
   display: flex;
   align-items: center;
   font-size: 12px;
-  white-space: nowrap;
   padding-left: 8px;
   z-index: 1;
+  /* MISE À JOUR: permettre le retour à la ligne */
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 4px;
 }
 
 .gantt-lane-group {

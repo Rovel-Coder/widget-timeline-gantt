@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.53';
+const WIDGET_VERSION = 'V0.0.52';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -358,7 +358,6 @@ const totalMs = computed(() => {
   return diff || 1;
 });
 
-// --- MISE À JOUR: clamp des tâches sur [minDate, maxDate] ---
 type VisibleTask = TaskWithLane & {
   visibleStart: Date;
   visibleEnd: Date;
@@ -373,7 +372,6 @@ const visibleTasks = computed<VisibleTask[]>(() => {
       const taskStart = t.startDate.getTime();
       const taskEnd = t.endDate.getTime();
 
-      // entièrement hors de la vue => on ignore
       if (taskEnd <= startView || taskStart >= endView) {
         return null;
       }
@@ -1024,10 +1022,15 @@ async function onTaskClick(task: TaskWithLane) {
   filter: brightness(1.1);
 }
 
+/* MISE À JOUR: le texte de la tâche ne déborde plus */
 .gantt-label {
   font-size: 11px;
   color: white;
   padding: 2px 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  pointer-events: none; /* visible uniquement via le clic sur la barre */
 }
 </style>

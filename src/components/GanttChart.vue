@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.71';
+const WIDGET_VERSION = 'V0.0.73';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -243,13 +243,26 @@ function laneTopPx(laneIndex: number) {
 
 // top d’une barre (empilement interne)
 function topPx(task: TaskWithLane) {
-  const laneTop = laneTopPx(task.laneIndex);
-  const rowIndex = task.subRowIndex ?? 0;
+const laneTop = laneTopPx(task.laneIndex);
+const laneH = laneHeightFor(task.laneIndex);
+const rows = laneRowCount.value[task.laneIndex] ?? 1;
+const rowHeight = baseLaneHeight; // même valeur que la hauteur de .gantt-bar
+const rowIndex = task.subRowIndex ?? 0;
 
-  if (rowIndex === 0) {
-    return laneTop;
-  }
-  return laneTop + rowIndex * (baseLaneHeight + subRowGap);
+// espace total occupé par les rangées de barres
+const rowsBlockHeight =
+rows * rowHeight + (rows - 1) * subRowGap;
+
+// marge au‑dessus du bloc de barres pour centrer dans la lane
+const topMargin = (laneH - rowsBlockHeight) / 2;
+
+// top de la rangée courante
+const rowTop =
+laneTop +
+topMargin +
+rowIndex * (rowHeight + subRowGap);
+
+return rowTop;
 }
 
 // 4) Dates / échelles

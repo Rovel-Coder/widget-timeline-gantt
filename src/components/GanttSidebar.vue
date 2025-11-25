@@ -130,7 +130,7 @@ defineExpose({ getLaneLabelHeights });
   padding-left: 8px;
   z-index: 1;
 
-  /* retour à la ligne + protection débordement */
+  /* multi‑ligne + pas de débordement horizontal */
   white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;

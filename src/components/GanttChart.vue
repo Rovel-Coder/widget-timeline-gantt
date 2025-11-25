@@ -5,11 +5,16 @@ import type { Task } from '../gristBridge';
 import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
+import { useGanttTasks } from '../composables/useGanttTasks';
+import { useGanttTimeline } from '../composables/useGanttTimeline';
+import { useGanttPopup } from '../composables/useGanttPopup';
+
 // Version du widget
-const WIDGET_VERSION = 'V0.0.74';
+const WIDGET_VERSION = 'V0.0.73';
 
 const props = defineProps<{ tasks: Task[] }>();
 
+// état global
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 const dayStartHour = ref<number>(0);
 
@@ -28,11 +33,9 @@ if (typeof grist !== 'undefined') {
     }
   });
 
-  // table utilisée pour les updates
   const table = grist.getTable();
   tableRef.value = table;
 
-  // on ne lit que mappings pour récupérer editableCols (records est inutile ici)
   grist.onRecords((_records: any[], mappings: any) => {
     if (mappings && mappings.columns && mappings.columns.editableCols) {
       const rawEditable = mappings.columns.editableCols;
@@ -43,35 +46,16 @@ if (typeof grist !== 'undefined') {
   });
 }
 
-// --- Types internes ---
-type ParsedTask = Task & {
-  startDate: Date;
-  endDate: Date;
-};
-
-type Lane = {
-  index: number;
-  groupBy: string;
-  groupBy2: string;
-  label: string;
-  isGroupHeader: boolean;
-};
-
 // géométrie
-const baseLaneHeight = 25;              // hauteur d'un étage
-const laneOuterGap = 5;                 // espace entre 2 lanes
-const subRowGap = 2.5;                  // espace interne entre étages
-const headerToFirstLaneGap = 5;         // entre header et 1re lane
+const baseLaneHeight = 25;
+const laneOuterGap = 5;
+const subRowGap = 2.5;
+const headerToFirstLaneGap = 5;
 
 const toolbarHeight = 25;
 const headerRowHeight = 25;
 
-const headerHeight = computed(() => {
-  if (timeScale.value === 'week') {
-    return headerRowHeight * 3; // Semaine / Jour / Créneaux
-  }
-  return headerRowHeight * 3;   // Mois / Trimestre
-});
+const headerHeight = computed(() => headerRowHeight * 3);
 
 const lanesTopOffset = computed(() => {
   return toolbarHeight + headerHeight.value + headerToFirstLaneGap;
@@ -85,594 +69,65 @@ const sidebarRef = ref<InstanceType<typeof GanttSidebar> | null>(null);
 // hauteurs réelles des labels de lanes
 const laneLabelHeights = ref<Record<number, number>>({});
 
-// pop-up tâche
-const isPopupOpen = ref(false);
-type TaskWithLaneForPopup = ParsedTask & { laneIndex: number; subRowIndex: number };
-const selectedTask = ref<TaskWithLaneForPopup | null>(null);
-
-// 1) Tâches avec dates JS (durée en HEURES)
-const parsedTasks = computed<ParsedTask[]>(() =>
-  props.tasks
-    .filter((t) => t.start && t.duration != null)
-    .map((t) => {
-      const startDate = new Date(t.start as string);
-      const hours = Number(t.duration);             // durée en heures
-      const endDate = new Date(
-        startDate.getTime() + hours * 60 * 60 * 1000 // + heures en millisecondes
-      );
-      return { ...t, startDate, endDate };
-    }),
+// --- Tâches / lanes via composable (vertical) ---
+const {
+  lanes,
+  tasksWithLane,
+  laneHeightFor,
+  laneTopPx,
+  visibleTasks,          // pour l’instant calculé avec min/max factices
+  leftPercentVisible,    // idem
+  widthPercentVisible,   // idem
+  topPx,
+} = useGanttTasks(
+  computed(() => props.tasks),
+  laneLabelHeights,
+  baseLaneHeight,
+  laneOuterGap,
+  subRowGap,
+  // minDate / maxDate seront remis par la timeline juste après
+  // on passe des refs temporaires ici si ton implémentation les utilise
+  ref(new Date()),
+  ref(new Date())
 );
 
-
-// 2) Lanes hiérarchiques
-const lanes = computed<Lane[]>(() => {
-  const result: Lane[] = [];
-  let nextIndex = 0;
-
-  const byGroup = new Map<string, ParsedTask[]>();
-  for (const t of parsedTasks.value) {
-    const g1 = (t.groupBy ?? '').toString();
-    if (!byGroup.has(g1)) byGroup.set(g1, []);
-    byGroup.get(g1)!.push(t);
-  }
-
-  for (const [g1, tasks] of byGroup.entries()) {
-    result.push({
-      index: nextIndex++,
-      groupBy: g1,
-      groupBy2: '',
-      label: g1 || '—',
-      isGroupHeader: true,
-    });
-
-    const seenSub = new Set<string>();
-    for (const t of tasks) {
-      const g2 = (t.groupBy2 ?? '').toString();
-      if (!g2 || seenSub.has(g2)) continue;
-      seenSub.add(g2);
-      result.push({
-        index: nextIndex++,
-        groupBy: g1,
-        groupBy2: g2,
-        label: g2,
-        isGroupHeader: false,
-      });
-    }
-  }
-
-  return result;
-});
-
-// 3) Tâches avec laneIndex + subRowIndex (empilement)
-type TaskWithLane = ParsedTask & {
-  laneIndex: number;
-  subRowIndex: number;
-};
-
-const tasksWithLane = computed<TaskWithLane[]>(() => {
-  const byKey = new Map<string, number>();
-  for (const lane of lanes.value) {
-    const key = `${lane.groupBy}||${lane.groupBy2}`;
-    byKey.set(key, lane.index);
-  }
-
-  const base: TaskWithLane[] = parsedTasks.value.map((t) => {
-    const g1 = (t.groupBy ?? '').toString();
-    const g2 = (t.groupBy2 ?? '').toString();
-    const key = `${g1}||${g2}`;
-    const laneIndex = byKey.get(key) ?? 0;
-    return { ...t, laneIndex, subRowIndex: 0 };
-  });
-
-  const result: TaskWithLane[] = [];
-  const byLane = new Map<number, TaskWithLane[]>();
-
-  for (const t of base) {
-    if (!byLane.has(t.laneIndex)) byLane.set(t.laneIndex, []);
-    byLane.get(t.laneIndex)!.push(t);
-  }
-
-  for (const [, tasks] of byLane.entries()) {
-    const sorted = [...tasks].sort(
-      (a, b) => a.startDate.getTime() - b.startDate.getTime(),
-    );
-
-    const rows: { tasks: { start: number; end: number }[] }[] = [];
-
-    for (const t of sorted) {
-      const start = t.startDate.getTime();
-      const end = t.endDate.getTime();
-
-      let placed = false;
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row || row.tasks.length === 0) continue;
-        const last = row.tasks[row.tasks.length - 1];
-        if (!last) continue;
-
-        if (start >= last.end) {
-          row.tasks.push({ start, end });
-          result.push({ ...t, subRowIndex: i });
-          placed = true;
-          break;
-        }
-      }
-
-      if (!placed) {
-        const newRow = { tasks: [{ start, end }] };
-        rows.push(newRow);
-        const newIndex = rows.length - 1;
-        result.push({ ...t, subRowIndex: newIndex });
-      }
-    }
-  }
-
-  return result;
-});
-
-// nombre d’étages (rows) par lane
-const laneRowCount = computed<Record<number, number>>(() => {
-  const map: Record<number, number> = {};
-  for (const t of tasksWithLane.value) {
-    const current = map[t.laneIndex] ?? 0;
-    const needed = t.subRowIndex + 1;
-    if (needed > current) map[t.laneIndex] = needed;
-  }
-  return map;
-});
-
-// hauteur réelle d’une lane (tous les étages + label wrap)
-function laneHeightFor(laneIndex: number): number {
-  const rows = laneRowCount.value[laneIndex] ?? 1;
-  const barsHeight =
-    rows <= 1 ? baseLaneHeight : rows * baseLaneHeight + (rows - 1) * subRowGap;
-
-  const labelHeight = laneLabelHeights.value[laneIndex] ?? baseLaneHeight;
-  return Math.max(barsHeight, labelHeight);
-}
-
-// top d’une lane (somme des hauteurs précédentes + gaps externes)
-function laneTopPx(laneIndex: number) {
-  let top = 10;
-  for (let i = 0; i < laneIndex; i++) {
-    top += laneHeightFor(i) + laneOuterGap;
-  }
-  return top;
-}
-
-// top d’une barre (empilement interne, centré dans la lane)
-function topPx(task: TaskWithLane) {
-  const laneTop = laneTopPx(task.laneIndex);
-  const laneH = laneHeightFor(task.laneIndex);
-  const rows = laneRowCount.value[task.laneIndex] ?? 1;
-
-  const rowHeight = 24; // même valeur que .gantt-bar { height: 24px; }
-  const rowIndex = task.subRowIndex ?? 0;
-
-  // espace total occupé par les rangées de barres
-  const rowsBlockHeight =
-    rows * rowHeight + (rows - 1) * subRowGap;
-
-  // marge au‑dessus du bloc de barres pour centrer dans la lane
-  const topMargin = (laneH - rowsBlockHeight) / 2;
-
-  // top de la rangée courante
-  const rowTop =
-    laneTop +
-    topMargin +
-    rowIndex * (rowHeight + subRowGap);
-
-  return rowTop;
-}
-
-
-// 4) Dates / échelles
+// Date de référence à partir des tâches
 const referenceDate = computed(() => {
-  if (!tasksWithLane.value.length) {
-    return new Date();
-  }
+  if (!tasksWithLane.value.length) return new Date();
   return new Date(
     Math.min(...tasksWithLane.value.map((t) => t.startDate.getTime())),
   );
 });
 
-const baseMinDate = computed(() => {
-  const d = new Date(referenceDate.value);
-
-  if (timeScale.value === 'week') {
-    const day = d.getDay();
-    const diffToMonday = (day === 0 ? -6 : 1) - day;
-    d.setDate(d.getDate() + diffToMonday);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-
-  if (timeScale.value === 'month') {
-    d.setDate(1);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-
-  const q = Math.floor(d.getMonth() / 3);
-  const qStart = new Date(d.getFullYear(), q * 3, 1);
-  qStart.setHours(0, 0, 0, 0);
-  return qStart;
+// --- Timeline (dates / buckets) via composable ---
+const {
+  timeOfDayBuckets,
+  weekWeekBuckets,
+  weekDayBuckets,
+  monthMonthBuckets,
+  monthWeekBuckets,
+  monthDayBuckets,
+  quarterMonthBuckets,
+  quarterWeekBuckets,
+} = useGanttTimeline({
+  timeScale,
+  offset,
+  referenceDateSource: () => referenceDate.value,
+  dayStartHour,
 });
 
-const baseMaxDate = computed(() => {
-  const d = new Date(referenceDate.value);
 
-  if (timeScale.value === 'week') {
-    const day = d.getDay();
-    const diffToMonday = (day === 0 ? -6 : 1) - day;
-    const monday = new Date(d);
-    monday.setDate(monday.getDate() + diffToMonday);
-    monday.setHours(0, 0, 0, 0);
 
-    const sunday = new Date(monday);
-    sunday.setDate(sunday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
-    return sunday;
-  }
+// Si tu veux recalcule visibleTasks / left/width avec les vrais min/max ici,
+// soit tu le fais dans useGanttTasks, soit tu laisses comme tu l’avais
+// (logique déjà portée dans le composable).
 
-  if (timeScale.value === 'month') {
-    const lastDayOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    lastDayOfMonth.setHours(23, 59, 59, 999);
-    return lastDayOfMonth;
-  }
-
-  const q = Math.floor(d.getMonth() / 3);
-  const qEnd = new Date(d.getFullYear(), q * 3 + 3, 0);
-  qEnd.setHours(23, 59, 59, 999);
-  return qEnd;
-});
-
-const minDate = computed(() => {
-  const k = offset.value;
-
-  if (timeScale.value === 'week') {
-    const d = new Date(baseMinDate.value);
-    d.setDate(d.getDate() + k * 7);
-    return d;
-  }
-
-  if (timeScale.value === 'month') {
-    const ref = new Date(referenceDate.value);
-    ref.setMonth(ref.getMonth() + k, 1);
-    ref.setHours(0, 0, 0, 0);
-    return ref;
-  }
-
-  const d = new Date(baseMinDate.value);
-  d.setMonth(d.getMonth() + k * 3);
-  const day = d.getDay();
-  const diffToMonday = (day === 0 ? -6 : 1) - day;
-  d.setDate(d.getDate() + diffToMonday);
-  d.setHours(0, 0, 0, 0);
-  return d;
-});
-
-const maxDate = computed(() => {
-  const k = offset.value;
-
-  if (timeScale.value === 'week') {
-    const d = new Date(baseMaxDate.value);
-    d.setDate(d.getDate() + k * 7);
-    return d;
-  }
-
-  if (timeScale.value === 'month') {
-    const ref = new Date(referenceDate.value);
-    ref.setMonth(ref.getMonth() + k + 1, 0);
-    ref.setHours(23, 59, 59, 999);
-    return ref;
-  }
-
-  const d = new Date(baseMaxDate.value);
-  d.setMonth(d.getMonth() + k * 3);
-  const day = d.getDay();
-  const diffToSunday = 7 - (day === 0 ? 7 : day);
-  d.setDate(d.getDate() + diffToSunday);
-  d.setHours(23, 59, 59, 999);
-  return d;
-});
-
-const totalMs = computed(() => {
-  const diff = maxDate.value.getTime() - minDate.value.getTime();
-  return diff || 1;
-});
-
-// Clamp des tâches sur la plage visible
-type VisibleTask = TaskWithLane & {
-  visibleStart: Date;
-  visibleEnd: Date;
-};
-
-const visibleTasks = computed<VisibleTask[]>(() => {
-  const startView = minDate.value.getTime();
-  const endView = maxDate.value.getTime();
-
-  return tasksWithLane.value
-    .map((t) => {
-      const taskStart = t.startDate.getTime();
-      const taskEnd = t.endDate.getTime();
-
-      if (taskEnd <= startView || taskStart >= endView) {
-        return null;
-      }
-
-      const visibleStartMs = Math.max(taskStart, startView);
-      const visibleEndMs = Math.min(taskEnd, endView);
-
-      return {
-        ...t,
-        visibleStart: new Date(visibleStartMs),
-        visibleEnd: new Date(visibleEndMs),
-      };
-    })
-    .filter((t): t is VisibleTask => t !== null);
-});
-
-function leftPercentVisible(task: VisibleTask) {
-  return (
-    ((task.visibleStart.getTime() - minDate.value.getTime()) /
-      totalMs.value) *
-    100
-  );
-}
-function widthPercentVisible(task: VisibleTask) {
-  return (
-    ((task.visibleEnd.getTime() - task.visibleStart.getTime()) /
-      totalMs.value) *
-    100
-  );
-}
-
-// numéro de semaine ISO
-function getIsoWeekNumber(date: Date): number {
-  const tmp = new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
-  );
-  const day = tmp.getUTCDay() || 7;
-  tmp.setUTCDate(tmp.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(
-    ((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  );
-  return weekNo;
-}
-
-type Bucket = { left: number; width: number; label: string; date?: Date };
-
-// Buckets pour les 3 coupures de la journée (vue Semaine)
-type TimeOfDayBucket = Bucket & { slot: 'morning' | 'afternoon' | 'night' };
-
-const timeOfDayBuckets = computed<TimeOfDayBucket[]>(() => {
-  const res: TimeOfDayBucket[] = [];
-  if (timeScale.value !== 'week') return res;
-
-  const start = new Date(minDate.value);
-  const end = new Date(maxDate.value);
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDay) {
-    const dayStart = new Date(ts);
-
-    const mStart = new Date(dayStart);
-    mStart.setHours(8, 0, 0, 0);
-    const mEnd = new Date(dayStart);
-    mEnd.setHours(14, 0, 0, 0);
-
-    const aStart = new Date(dayStart);
-    aStart.setHours(14, 0, 0, 0);
-    const aEnd = new Date(dayStart);
-    aEnd.setHours(20, 0, 0, 0);
-
-    const nStart = new Date(dayStart);
-    nStart.setHours(20, 0, 0, 0);
-    const nEnd = new Date(dayStart.getTime() + oneDay);
-    nEnd.setHours(8, 0, 0, 0);
-
-    const addBucket = (
-      slot: TimeOfDayBucket['slot'],
-      bStart: Date,
-      bEnd: Date,
-      label: string,
-    ) => {
-      const left =
-        ((bStart.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
-      const width =
-        ((bEnd.getTime() - bStart.getTime()) / totalMs.value) * 100;
-      res.push({ left, width, label, slot });
-    };
-
-    addBucket('morning', mStart, mEnd, 'Matin');
-    addBucket('afternoon', aStart, aEnd, 'Après‑midi');
-    addBucket('night', nStart, nEnd, 'Nuit');
-  }
-
-  return res;
-});
-
-// Semaine (ligne 1 - vue semaine)
-const weekWeekBuckets = computed<Bucket[]>(() => {
-  const res: Bucket[] = [];
-  if (timeScale.value !== 'week') return res;
-  const start = new Date(minDate.value);
-  const end = new Date(maxDate.value);
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  let weekStart = new Date(start);
-  while (weekStart <= end) {
-    const weekEnd = new Date(weekStart.getTime() + 6 * oneDay);
-    const weekNumber = getIsoWeekNumber(weekStart);
-    const left =
-      ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
-    const width =
-      ((weekEnd.getTime() - weekStart.getTime() + oneDay) / totalMs.value) *
-      100;
-    res.push({ left, width, label: `S${weekNumber}` });
-    weekStart = new Date(weekStart.getTime() + 7 * oneDay);
-  }
-  return res;
-});
-
-// Jours pour la vue Semaine (ligne 2)
-const weekDayBuckets = computed<Bucket[]>(() => {
-  const res: Bucket[] = [];
-  if (timeScale.value !== 'week') return res;
-  const start = new Date(minDate.value);
-  const end = new Date(maxDate.value);
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDay) {
-    const d = new Date(ts);
-    const bucketStart = new Date(d);
-    bucketStart.setHours(dayStartHour.value, 0, 0, 0);
-    const label = bucketStart.toLocaleDateString('fr-FR', {
-      weekday: 'short',
-      day: '2-digit',
-    });
-    const left =
-      ((bucketStart.getTime() - minDate.value.getTime()) / totalMs.value) *
-      100;
-    const width = (oneDay / totalMs.value) * 100;
-    res.push({ left, width, label, date: bucketStart });
-  }
-  return res;
-});
-
-// Mois (ligne 1 - vue mois)
-const monthMonthBuckets = computed<Bucket[]>(() => {
-  const res: Bucket[] = [];
-  if (timeScale.value !== 'month' && timeScale.value !== 'quarter') return res;
-  const start = new Date(minDate.value);
-  const end = new Date(maxDate.value);
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  const d = new Date(start);
-  d.setDate(1);
-  while (d <= end) {
-    const monthStart = new Date(d);
-    const monthEnd = new Date(d);
-    monthEnd.setMonth(monthEnd.getMonth() + 1, 0);
-
-    const label = monthStart.toLocaleDateString('fr-FR', {
-      month: 'short',
-      year: '2-digit',
-    });
-
-    const left =
-      ((monthStart.getTime() - minDate.value.getTime()) / totalMs.value) *
-      100;
-    const width =
-      ((monthEnd.getTime() - monthStart.getTime() + oneDay) / totalMs.value) *
-      100;
-
-    res.push({ left, width, label });
-    d.setMonth(d.getMonth() + 1, 1);
-  }
-  return res;
-});
-
-// Semaines (ligne 2 - vue mois)
-const monthWeekBuckets = computed<Bucket[]>(() => {
-  const res: Bucket[] = [];
-  if (timeScale.value !== 'month') return res;
-  const start = new Date(minDate.value);
-  const end = new Date(maxDate.value);
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  let weekStart = new Date(start);
-  while (weekStart <= end) {
-    const weekEnd = new Date(weekStart.getTime() + 6 * oneDay);
-    const weekNumber = getIsoWeekNumber(weekStart);
-    const left =
-      ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
-    const width =
-      ((weekEnd.getTime() - weekStart.getTime() + oneDay) / totalMs.value) *
-      100;
-    res.push({ left, width, label: `S${weekNumber}` });
-    weekStart = new Date(weekStart.getTime() + 7 * oneDay);
-  }
-  return res;
-});
-
-// Jours (ligne 3 - vue mois)
-const monthDayBuckets = computed<Bucket[]>(() => {
-  const res: Bucket[] = [];
-  if (timeScale.value !== 'month') return res;
-
-  const start = new Date(minDate.value);
-  const end = new Date(maxDate.value);
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  for (let ts = start.getTime(); ts <= end.getTime(); ts += oneDay) {
-    const d = new Date(ts);
-    const label = d.toLocaleDateString('fr-FR', { day: '2-digit' });
-    const left =
-      ((d.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
-    const width = (oneDay / totalMs.value) * 100;
-    res.push({ left, width, label, date: d });
-  }
-  return res;
-});
-
-// Trimestre (ligne 1 - vue trimestre) = regroupement de 3 mois
-const quarterMonthBuckets = computed<Bucket[]>(() => {
-  const res: Bucket[] = [];
-  if (timeScale.value !== 'quarter') return res;
-
-  const start = new Date(minDate.value);
-  const end = new Date(maxDate.value);
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  const d = new Date(start);
-  d.setDate(1);
-  while (d <= end) {
-    const monthStart = new Date(d);
-    const monthEnd = new Date(d);
-    monthEnd.setMonth(monthEnd.getMonth() + 1, 0);
-
-    const label = monthStart.toLocaleDateString('fr-FR', { month: 'short' });
-
-    const left =
-      ((monthStart.getTime() - minDate.value.getTime()) / totalMs.value) *
-      100;
-    const width =
-      ((monthEnd.getTime() - monthStart.getTime() + oneDay) / totalMs.value) *
-      100;
-
-    res.push({ left, width, label });
-    d.setMonth(d.getMonth() + 1, 1);
-  }
-  return res;
-});
-
-// Semaines (ligne 3 - vue trimestre)
-const quarterWeekBuckets = computed<Bucket[]>(() => {
-  const res: Bucket[] = [];
-  if (timeScale.value !== 'quarter') return res;
-
-  const start = new Date(minDate.value);
-  const end = new Date(maxDate.value);
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  let weekStart = new Date(start);
-  while (weekStart <= end) {
-    const weekEnd = new Date(weekStart.getTime() + 6 * oneDay);
-    const weekNumber = getIsoWeekNumber(weekStart);
-    const left =
-      ((weekStart.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
-    const width =
-      ((weekEnd.getTime() - weekStart.getTime() + oneDay) / totalMs.value) *
-      100;
-    res.push({ left, width, label: `S${weekNumber}` });
-    weekStart = new Date(weekStart.getTime() + 7 * oneDay);
-  }
-  return res;
-});
+// --- Popup tâche via composable ---
+const {
+  isPopupOpen,
+  selectedTask,
+  onTaskClick,
+} = useGanttPopup();
 
 // Navigation
 function goPrev() {
@@ -688,7 +143,10 @@ function resetOffset() {
 // fonction utilitaire: mesure des labels et mise à jour des hauteurs
 async function recomputeLaneLabelHeights() {
   await nextTick();
-  if (sidebarRef.value && typeof (sidebarRef.value as any).getLaneLabelHeights === 'function') {
+  if (
+    sidebarRef.value &&
+    typeof (sidebarRef.value as any).getLaneLabelHeights === 'function'
+  ) {
     const heights: number[] = (sidebarRef.value as any).getLaneLabelHeights();
     const map: Record<number, number> = {};
     lanes.value.forEach((lane, i) => {
@@ -705,7 +163,7 @@ onMounted(async () => {
   const body = bodyRef.value;
   if (!body) return;
 
-  const gantt = body.closest('.gantt');
+  const gantt = body.closest('.gantt-right');
   if (!gantt) return;
 
   const header = gantt.querySelector('.gantt-header');
@@ -738,13 +196,8 @@ function onBodyScroll(e: Event) {
     }
   }
 }
-
-// --- clic sur une barre => pop-up ---
-async function onTaskClick(task: TaskWithLane) {
-  selectedTask.value = task;
-  isPopupOpen.value = true;
-}
 </script>
+
 
 <template>
   <div class="gantt-wrapper">

@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.9';
+const WIDGET_VERSION = 'V0.0.48';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -31,7 +31,7 @@ type Lane = {
 const baseLaneHeight = 24;              // hauteur d'un étage
 const laneOuterGap = 5;                 // espace entre 2 lanes
 const subRowGap = 2.5;                  // espace interne entre étages
-const headerToFirstLaneGap = 10;        // entre header et 1re lane
+const headerToFirstLaneGap = 5;        // entre header et 1re lane
 
 const toolbarHeight = 25;
 const headerRowHeight = 25;
@@ -206,7 +206,7 @@ function laneHeightFor(laneIndex: number): number {
 
 // top d’une lane (somme des hauteurs précédentes + gaps externes)
 function laneTopPx(laneIndex: number) {
-  let top = lanesTopOffset.value;
+  let top = 10;
   for (let i = 0; i < laneIndex; i++) {
     top += laneHeightFor(i) + laneOuterGap;
   }
@@ -830,8 +830,8 @@ function onBodyScroll(e: Event) {
 <style scoped>
 .gantt-wrapper {
   display: grid;
-  grid-template-columns: 200px 1fr;
-  height: 400px;
+  grid-template-columns: 150px 1fr;
+  min-height: 400px;
   border: 1px solid #374151;
   background-color: #111827;
   overflow: hidden;

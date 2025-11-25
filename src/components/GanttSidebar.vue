@@ -70,6 +70,7 @@ const props = defineProps<{
 .gantt-sidebar-toolbar {
   height: 25px;
   background-color: #020617;
+  border-bottom: 1px solid #374151;
   display: flex;
   align-items: center;
   padding: 0 8px;

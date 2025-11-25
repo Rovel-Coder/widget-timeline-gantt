@@ -6,12 +6,42 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.48';
+const WIDGET_VERSION = 'V0.0.49';
 
 const props = defineProps<{ tasks: Task[] }>();
 
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 const dayStartHour = ref<number>(0);
+
+// contexte d’édition
+const editableCols = ref<string[]>([]);
+const tableRef = ref<any | null>(null);
+
+declare const grist: any;
+
+if (typeof grist !== 'undefined') {
+  grist.onOptions((options: any) => {
+    if (options && typeof options.dayStartHour === 'number') {
+      dayStartHour.value = options.dayStartHour;
+    } else {
+      dayStartHour.value = 0;
+    }
+  });
+
+  // table utilisée pour les updates
+  const table = grist.getTable();
+  tableRef.value = table;
+
+  // on ne lit que mappings pour récupérer editableCols (records est inutile ici)
+  grist.onRecords((_records: any[], mappings: any) => {
+    if (mappings && mappings.columns && mappings.columns.editableCols) {
+      const rawEditable = mappings.columns.editableCols;
+      editableCols.value = Array.isArray(rawEditable) ? rawEditable : [];
+    } else {
+      editableCols.value = [];
+    }
+  });
+}
 
 // --- Types internes ---
 type ParsedTask = Task & {
@@ -31,7 +61,7 @@ type Lane = {
 const baseLaneHeight = 24;              // hauteur d'un étage
 const laneOuterGap = 5;                 // espace entre 2 lanes
 const subRowGap = 2.5;                  // espace interne entre étages
-const headerToFirstLaneGap = 5;        // entre header et 1re lane
+const headerToFirstLaneGap = 5;         // entre header et 1re lane
 
 const toolbarHeight = 25;
 const headerRowHeight = 25;
@@ -52,18 +82,6 @@ const offset = ref<number>(0);
 
 const bodyRef = ref<HTMLDivElement | null>(null);
 const sidebarRef = ref<InstanceType<typeof GanttSidebar> | null>(null);
-
-declare const grist: any;
-
-if (typeof grist !== 'undefined') {
-  grist.onOptions((options: any) => {
-    if (options && typeof options.dayStartHour === 'number') {
-      dayStartHour.value = options.dayStartHour;
-    } else {
-      dayStartHour.value = 0;
-    }
-  });
-}
 
 // 1) Tâches avec dates JS
 const parsedTasks = computed<ParsedTask[]>(() =>
@@ -576,7 +594,6 @@ const quarterMonthBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// Mois (ligne 2 - vue trimestre) = réutilise monthMonthBuckets
 // Semaines (ligne 3 - vue trimestre)
 const quarterWeekBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
@@ -612,6 +629,7 @@ function resetOffset() {
   offset.value = 0;
 }
 
+// centrage sur aujourd’hui
 onMounted(async () => {
   await nextTick();
 
@@ -645,6 +663,44 @@ function onBodyScroll(e: Event) {
       sidebarEl.scrollTop = body.scrollTop;
     }
   }
+}
+
+// --- Edition : clic sur une barre ---
+async function onTaskClick(task: TaskWithLane) {
+  if (!tableRef.value) return;
+
+  // si aucune colonne éditable : on se contente de déplacer le curseur dans Grist
+  if (!editableCols.value.length) {
+    grist.setCursorPos({ rowId: task.id });
+    return;
+  }
+
+  const col = editableCols.value[0];
+  if (!col) {
+    return;
+  }
+
+  // on récupère l’enregistrement courant via l’API plugin, si dispo [web:18][web:23]
+  let currentValue: unknown = '';
+  if (typeof grist.fetchSelectedRecord === 'function') {
+    const currentRecord = await grist.fetchSelectedRecord(task.id);
+    currentValue = currentRecord ? currentRecord[col] ?? '' : '';
+  }
+
+  const newValue = window.prompt(`Nouvelle valeur pour ${col}`, String(currentValue ?? ''));
+  if (newValue === null) {
+    return; // annulé
+  }
+
+  const table = tableRef.value;
+  await table.update([
+    {
+      id: task.id,
+      fields: {
+        [col]: newValue,
+      },
+    },
+  ]);
 }
 </script>
 
@@ -816,6 +872,7 @@ function onBodyScroll(e: Event) {
               width: widthPercent(task) + '%',
               backgroundColor: task.color || '#4caf50',
             }"
+            @click="onTaskClick(task)"
           >
             <span class="gantt-label">
               {{ task.name || 'Tâche' }}
@@ -926,6 +983,11 @@ function onBodyScroll(e: Event) {
   border-radius: 4px;
   display: flex;
   align-items: center;
+  cursor: pointer;
+}
+
+.gantt-bar:hover {
+  filter: brightness(1.1);
 }
 
 .gantt-label {

@@ -6,7 +6,7 @@ import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.52';
+const WIDGET_VERSION = 'V0.0.64';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -84,6 +84,11 @@ const sidebarRef = ref<InstanceType<typeof GanttSidebar> | null>(null);
 
 // hauteurs réelles des labels de lanes
 const laneLabelHeights = ref<Record<number, number>>({});
+
+// pop-up tâche
+const isPopupOpen = ref(false);
+type TaskWithLaneForPopup = ParsedTask & { laneIndex: number; subRowIndex: number };
+const selectedTask = ref<TaskWithLaneForPopup | null>(null);
 
 // 1) Tâches avec dates JS
 const parsedTasks = computed<ParsedTask[]>(() =>
@@ -228,7 +233,6 @@ function laneHeightFor(laneIndex: number): number {
 }
 
 // top d’une lane (somme des hauteurs précédentes + gaps externes)
-// NE PAS TOUCHER pour garder l’écart avec le header
 function laneTopPx(laneIndex: number) {
   let top = 10;
   for (let i = 0; i < laneIndex; i++) {
@@ -600,7 +604,7 @@ const monthDayBuckets = computed<Bucket[]>(() => {
   return res;
 });
 
-// Trimestre (ligne 1 - vue trimestre)
+// Trimestre (ligne 1 - vue trimestre) = regroupement de 3 mois
 const quarterMonthBuckets = computed<Bucket[]>(() => {
   const res: Bucket[] = [];
   if (timeScale.value !== 'quarter') return res;
@@ -712,44 +716,10 @@ function onBodyScroll(e: Event) {
   }
 }
 
-// --- Edition : clic sur une barre ---
+// --- Edition / pop-up : clic sur une barre ---
 async function onTaskClick(task: TaskWithLane) {
-  if (!tableRef.value) return;
-
-  // si aucune colonne éditable : on se contente de déplacer le curseur dans Grist
-  if (!editableCols.value.length) {
-    grist.setCursorPos({ rowId: task.id });
-    return;
-  }
-
-  const col = editableCols.value[0];
-  if (!col) {
-    return;
-  }
-
-  let currentValue: unknown = '';
-  if (typeof grist.fetchSelectedRecord === 'function') {
-    const currentRecord = await grist.fetchSelectedRecord(task.id);
-    currentValue = currentRecord ? currentRecord[col] ?? '' : '';
-  }
-
-  const newValue = window.prompt(
-    `Nouvelle valeur pour ${col}`,
-    String(currentValue ?? ''),
-  );
-  if (newValue === null) {
-    return; // annulé
-  }
-
-  const table = tableRef.value;
-  await table.update([
-    {
-      id: task.id,
-      fields: {
-        [col]: newValue,
-      },
-    },
-  ]);
+  selectedTask.value = task;
+  isPopupOpen.value = true;
 }
 </script>
 
@@ -929,6 +899,38 @@ async function onTaskClick(task: TaskWithLane) {
           </div>
         </div>
       </div>
+
+      <!-- Pop-up d’info tâche -->
+      <div
+        v-if="isPopupOpen && selectedTask"
+        class="gantt-task-popup"
+        @click.self="isPopupOpen = false"
+      >
+        <div class="gantt-task-popup-inner">
+          <div class="gantt-task-popup-title">
+            {{ selectedTask.name || 'Tâche' }}
+          </div>
+          <div class="gantt-task-popup-row">
+            Début : {{ selectedTask.startDate.toLocaleString('fr-FR') }}
+          </div>
+          <div class="gantt-task-popup-row">
+            Durée : {{ selectedTask.duration }} h
+          </div>
+          <div
+            class="gantt-task-popup-row"
+            v-if="selectedTask.comment"
+          >
+            Commentaire : {{ selectedTask.comment }}
+          </div>
+
+          <button
+            class="gantt-task-popup-close"
+            @click="isPopupOpen = false"
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -1048,5 +1050,47 @@ async function onTaskClick(task: TaskWithLane) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Pop-up tâche */
+.gantt-task-popup {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.gantt-task-popup-inner {
+  min-width: 260px;
+  max-width: 360px;
+  background: #020617;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #e5e7eb;
+}
+
+.gantt-task-popup-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.gantt-task-popup-row {
+  margin-bottom: 4px;
+}
+
+.gantt-task-popup-close {
+  margin-top: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid #4b5563;
+  background: #111827;
+  color: #e5e7eb;
+  cursor: pointer;
 }
 </style>

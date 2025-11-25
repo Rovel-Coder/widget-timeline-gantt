@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick } from 'vue';
+import { computed, ref, onMounted, nextTick, watch } from 'vue';
 import type { Task } from '../gristBridge';
 
 import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
 
 // Version du widget
-const WIDGET_VERSION = 'V0.0.64';
+const WIDGET_VERSION = 'V0.0.65';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -670,11 +670,9 @@ function resetOffset() {
   offset.value = 0;
 }
 
-// centrage sur aujourd’hui + mesure des labels
-onMounted(async () => {
+// fonction utilitaire: mesure des labels et mise à jour des hauteurs
+async function recomputeLaneLabelHeights() {
   await nextTick();
-
-  // mesure des labels de lanes pour adapter la hauteur
   if (sidebarRef.value && typeof (sidebarRef.value as any).getLaneLabelHeights === 'function') {
     const heights: number[] = (sidebarRef.value as any).getLaneLabelHeights();
     const map: Record<number, number> = {};
@@ -683,6 +681,11 @@ onMounted(async () => {
     });
     laneLabelHeights.value = map;
   }
+}
+
+// centrage sur aujourd’hui + première mesure
+onMounted(async () => {
+  await recomputeLaneLabelHeights();
 
   const body = bodyRef.value;
   if (!body) return;
@@ -706,6 +709,11 @@ onMounted(async () => {
     offsetLeft - body.clientWidth / 2 + todayCell.offsetWidth / 2;
 });
 
+// remesure chaque fois que les lanes changent (nouvelles données, etc.)
+watch(lanes, () => {
+  recomputeLaneLabelHeights();
+});
+
 function onBodyScroll(e: Event) {
   const body = e.target as HTMLDivElement;
   if (sidebarRef.value) {
@@ -716,7 +724,7 @@ function onBodyScroll(e: Event) {
   }
 }
 
-// --- Edition / pop-up : clic sur une barre ---
+// --- clic sur une barre => pop-up ---
 async function onTaskClick(task: TaskWithLane) {
   selectedTask.value = task;
   isPopupOpen.value = true;
@@ -749,7 +757,7 @@ async function onTaskClick(task: TaskWithLane) {
 
       <!-- Header multi-lignes (3 x 25px) -->
       <div class="gantt-header">
-        <!-- Ligne 1 : Semaine / Mois / Trimestre -->
+        <!-- Ligne 1 -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -785,7 +793,7 @@ async function onTaskClick(task: TaskWithLane) {
           </template>
         </div>
 
-        <!-- Ligne 2 : Jour (semaine) / Semaine (mois) / Mois (trimestre) -->
+        <!-- Ligne 2 -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -826,7 +834,7 @@ async function onTaskClick(task: TaskWithLane) {
           </template>
         </div>
 
-        <!-- Ligne 3 : Créneaux (semaine) / Jour (mois) / Semaine (trimestre) -->
+        <!-- Ligne 3 -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -869,7 +877,7 @@ async function onTaskClick(task: TaskWithLane) {
           Aucune tâche à afficher
         </div>
         <div v-else class="gantt-body-inner">
-          <!-- fond des lanes avec hauteur dynamique -->
+          <!-- fond des lanes -->
           <div
             v-for="lane in lanes"
             :key="'bg-' + lane.index"
@@ -880,7 +888,7 @@ async function onTaskClick(task: TaskWithLane) {
             }"
           ></div>
 
-          <!-- Barres de tâches (stackées) -->
+          <!-- Barres de tâches -->
           <div
             v-for="task in visibleTasks"
             :key="task.id"

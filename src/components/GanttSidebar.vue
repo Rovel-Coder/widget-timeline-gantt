@@ -68,7 +68,7 @@ defineExpose({ getLaneLabelHeights });
         }"
         :style="{
           top: props.laneTopFn(lane.index) + 'px',
-          height: props.laneHeight + 'px'
+          height: props.laneHeightFn(lane.index) + 'px'
         }"
         :ref="(el) => setLabelRef(el as HTMLElement | null, i)"
       >

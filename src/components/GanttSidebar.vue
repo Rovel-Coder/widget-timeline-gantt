@@ -84,7 +84,7 @@ const props = defineProps<{
 
 /* 3 lignes de header à 25px => 75px */
 .gantt-sidebar-placeholder {
-  height: 80px;
+  height: 77.5px;
   background-color: #111827;
 }
 

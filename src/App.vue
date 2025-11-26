@@ -15,9 +15,16 @@ const tasks = inject<Ref<Task[]>>('tasks')!;
 
 <style>
 .gantt-root {
-  height: auto;
+  height: 100%;
   margin: 0;
   overflow: hidden;
   font-family: system-ui, sans-serif;
 }
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
 </style>

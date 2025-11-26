@@ -48,9 +48,9 @@ if (typeof grist !== 'undefined') {
 const baseLaneHeight = 25;
 const laneOuterGap = 5;
 const subRowGap = 2.5;
-const headerToFirstLaneGap = 7;
+const headerToFirstLaneGap = 5;
 
-const toolbarHeight = 25;
+const toolbarHeight = 26;
 const headerRowHeight = 25;
 
 const headerHeight = computed(() => headerRowHeight * 3);
@@ -397,7 +397,7 @@ function onBodyScroll(e: Event) {
 .gantt-top-left {
   grid-column: 1;
   grid-row: 1;
-   height: 105px;
+  height: 105px;
   background-color: #020617;
   border-right: 1px solid #374151;
   border-bottom: 1px solid #374151;

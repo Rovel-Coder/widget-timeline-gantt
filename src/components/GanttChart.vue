@@ -9,7 +9,7 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'V1.0.2';
+const WIDGET_VERSION = 'V1.0.0';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -397,7 +397,7 @@ function onBodyScroll(e: Event) {
 .gantt-top-left {
   grid-column: 1;
   grid-row: 1;
-  height: 102.5px;
+  height: 103px;
   background-color: #020617;
   border-right: 1px solid #374151;
   border-bottom: 1px solid #374151;

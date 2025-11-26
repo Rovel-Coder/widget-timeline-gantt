@@ -9,7 +9,7 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'V1.0.0';
+const WIDGET_VERSION = 'V1.0.1';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -48,7 +48,7 @@ if (typeof grist !== 'undefined') {
 const baseLaneHeight = 25;
 const laneOuterGap = 5;
 const subRowGap = 2.5;
-const headerToFirstLaneGap = 5;
+const headerToFirstLaneGap = 7;
 
 const toolbarHeight = 25;
 const headerRowHeight = 25;

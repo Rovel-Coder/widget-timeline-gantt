@@ -54,6 +54,7 @@ const toolbarHeight = 25;
 const headerRowHeight = 25;
 
 const headerHeight = computed(() => headerRowHeight * 3);
+const topRowHeight = computed(() => toolbarHeight + headerHeight.value);
 const lanesTopOffset = computed(
   () => toolbarHeight + headerHeight.value + headerToFirstLaneGap,
 );
@@ -164,7 +165,8 @@ function onBodyScroll(e: Event) {
 </script>
 
 <template>
-  <div class="gantt-wrapper">
+  <div class="gantt-wrapper" :style="{gridTemplateRows: topRowHeight + 'px 1fr'
+}">
     <!-- Zone A : carré haut-gauche (version) -->
     <div class="gantt-top-left">
       <span class="gantt-version">{{ WIDGET_VERSION }}</span>
@@ -385,8 +387,8 @@ function onBodyScroll(e: Event) {
 <style scoped>
 .gantt-wrapper {
   display: grid;
-  grid-template-columns: 200px 1fr; /* 200px pour colonne gauche, reste pour droite */
-  grid-template-rows: 105px 1fr;    /* 105px pour la bande haute, reste pour le corps */
+  grid-template-columns: 200px 1fr;
+  /* plus de grid-template-rows fixe ici */
   height: 100%;
   border: 1px solid #374151;
   background-color: #111827;

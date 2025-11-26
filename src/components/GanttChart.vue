@@ -386,8 +386,8 @@ function onBodyScroll(e: Event) {
 .gantt-wrapper {
   display: grid;
   grid-template-columns: 200px 1fr; /* 200px pour colonne gauche, reste pour droite */
-  grid-template-rows: 105px 1fr;    /* 105px pour la bande haute, reste pour le corps */
-  height: 100%;
+  grid-template-rows: 100px 1fr;    /* 105px pour la bande haute, reste pour le corps */
+  height: auto;
   border: 1px solid #374151;
   background-color: #111827;
   overflow: hidden;

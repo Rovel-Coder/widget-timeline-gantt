@@ -54,7 +54,6 @@ const toolbarHeight = 25;
 const headerRowHeight = 25;
 
 const headerHeight = computed(() => headerRowHeight * 3);
-const topRowHeight = computed(() => toolbarHeight + headerHeight.value);
 const lanesTopOffset = computed(
   () => toolbarHeight + headerHeight.value + headerToFirstLaneGap,
 );
@@ -165,14 +164,13 @@ function onBodyScroll(e: Event) {
 </script>
 
 <template>
-  <div class="gantt-wrapper" :style="{gridTemplateRows: topRowHeight + 'px 1fr'
-}">
-    <!-- Zone A : carré haut-gauche (version) -->
+  <div class="gantt-wrapper">
+    <!-- Zone haut-gauche : version -->
     <div class="gantt-top-left">
       <span class="gantt-version">{{ WIDGET_VERSION }}</span>
     </div>
 
-    <!-- Zone B + D : partie droite (toolbar + header + body) -->
+    <!-- Partie droite : toolbar + header + body -->
     <div class="gantt-right">
       <GanttToolbar
         :time-scale="timeScale"
@@ -182,7 +180,7 @@ function onBodyScroll(e: Event) {
         @change-scale="(s) => { timeScale = s; offset = 0; }"
       />
 
-      <!-- Header multi-lignes (3 x 25px) -->
+      <!-- Header multi-lignes -->
       <div class="gantt-header">
         <!-- Ligne 1 -->
         <div class="gantt-header-row">
@@ -298,7 +296,7 @@ function onBodyScroll(e: Event) {
         </div>
       </div>
 
-      <!-- Corps (zone scrollable, sous le header) -->
+      <!-- Corps -->
       <div class="gantt-body" ref="bodyRef" @scroll="onBodyScroll">
         <div v-if="!visibleTasks.length" class="gantt-empty">
           Aucune tâche à afficher
@@ -368,7 +366,7 @@ function onBodyScroll(e: Event) {
       </div>
     </div>
 
-    <!-- Zone C : sidebar sous le carré haut-gauche -->
+    <!-- Sidebar (colonne de gauche, sous la zone version) -->
     <GanttSidebar
       class="gantt-sidebar"
       ref="sidebarRef"
@@ -383,12 +381,11 @@ function onBodyScroll(e: Event) {
   </div>
 </template>
 
-
 <style scoped>
 .gantt-wrapper {
   display: grid;
   grid-template-columns: 200px 1fr;
-  /* plus de grid-template-rows fixe ici */
+  grid-template-rows: auto 1fr; /* la 1re ligne prend la hauteur réelle (toolbar + header) */
   height: 100%;
   border: 1px solid #374151;
   background-color: #111827;
@@ -396,7 +393,7 @@ function onBodyScroll(e: Event) {
   color: #e5e7eb;
 }
 
-/* Zone haut-gauche (carré 200x105) */
+/* Zone haut-gauche (même ligne que toolbar+header) */
 .gantt-top-left {
   grid-column: 1;
   grid-row: 1;
@@ -404,18 +401,20 @@ function onBodyScroll(e: Event) {
   border-right: 1px solid #374151;
   border-bottom: 1px solid #374151;
   display: flex;
-  align-items:center;
+  align-items: center;
   padding: 0 8px;
   box-sizing: border-box;
+}
+
+.gantt-version {
   font-size: 10px;
   color: #9ca3af;
 }
 
-/* Partie droite (toolbar + header + body) */
+/* Partie droite : occupe les 2 lignes (header + corps) */
 .gantt-right {
   grid-column: 2;
-  grid-row: 1 / span 2; /* occupe toute la hauteur à droite */
-  position: relative;
+  grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -426,8 +425,6 @@ function onBodyScroll(e: Event) {
 .gantt-sidebar {
   grid-column: 1;
   grid-row: 2;
-  border-right: 1px solid #374151;
-  overflow: hidden; /* aucune scrollbar visible dans la sidebar */
 }
 
 /* Header */
@@ -479,7 +476,7 @@ function onBodyScroll(e: Event) {
   background-color: rgba(234, 179, 8, 0.08);
 }
 
-/* Corps : seule zone scrollable */
+/* Corps */
 .gantt-body {
   position: relative;
   flex: 1;
@@ -488,7 +485,7 @@ function onBodyScroll(e: Event) {
 
 .gantt-body-inner {
   position: relative;
-  height: auto;
+  min-height: 100%;
 }
 
 .gantt-lane-bg {
@@ -571,4 +568,3 @@ function onBodyScroll(e: Event) {
   cursor: pointer;
 }
 </style>
-

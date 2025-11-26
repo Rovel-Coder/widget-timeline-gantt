@@ -32,10 +32,6 @@ defineExpose({ getLaneLabelHeights });
 
 <template>
   <div class="gantt-sidebar">
-    <div class="gantt-sidebar-toolbar">
-      <span class="gantt-version">{{ props.version }}</span>
-    </div>
-    
     <div v-if="!props.lanes.length" class="gantt-empty">
       Aucune tâche
     </div>
@@ -75,34 +71,16 @@ defineExpose({ getLaneLabelHeights });
 .gantt-sidebar {
   position: relative;
   border-right: 1px solid #374151;
-  overflow: hidden; /* aucune scrollbar dans la sidebar */
+  overflow: hidden;
 }
 
-/* sécurité : si une scrollbar apparaît quand même, on la cache */
-/* WebKit (Chrome, Edge, Safari) */
 .gantt-sidebar::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
 
-/* Firefox */
 .gantt-sidebar {
   scrollbar-width: none;
-}
-
-.gantt-sidebar-toolbar {
-  height: 25px;
-  background-color: #020617;
-  border-bottom: 1px solid #374151;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  box-sizing: border-box;
-}
-
-.gantt-version {
-  font-size: 10px;
-  color: #9ca3af;
 }
 
 .gantt-sidebar-inner {
@@ -123,11 +101,10 @@ defineExpose({ getLaneLabelHeights });
   position: absolute;
   width: 100%;
   display: flex;
-  align-items: center; /* Ajoute centré vertical de span, sur toute la hauteur */
+  align-items: center;
   font-size: 12px;
   padding-left: 8px;
   z-index: 1;
-  /* Multiligne, pas de débordement horizontal */
   white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -139,7 +116,6 @@ defineExpose({ getLaneLabelHeights });
   line-height: 16px;
   display: block;
   word-break: break-word;
-  /* Pour un bon centrage vertical même avec plusieurs lignes, utiliser margin auto : utilisé dans flex + align-items: center */
 }
 
 .gantt-lane-group {

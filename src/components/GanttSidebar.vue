@@ -35,8 +35,7 @@ defineExpose({ getLaneLabelHeights });
     <div class="gantt-sidebar-toolbar">
       <span class="gantt-version">{{ props.version }}</span>
     </div>
-    <div class="gantt-sidebar-placeholder"></div>
-
+    
     <div v-if="!props.lanes.length" class="gantt-empty">
       Aucune tâche
     </div>
@@ -104,11 +103,6 @@ defineExpose({ getLaneLabelHeights });
 .gantt-version {
   font-size: 10px;
   color: #9ca3af;
-}
-
-.gantt-sidebar-placeholder {
-  height: 77.5px;
-  background-color: #111827;
 }
 
 .gantt-sidebar-inner {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { Task } from '../gristBridge';
 
 import GanttSidebar from './GanttSidebar.vue';
@@ -9,7 +9,6 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-// Version du widget
 const WIDGET_VERSION = 'V0.0.73';
 
 const props = defineProps<{ tasks: Task[] }>();
@@ -18,10 +17,9 @@ const props = defineProps<{ tasks: Task[] }>();
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 const dayStartHour = ref<number>(0);
 
-// contexte d’édition
+// contexte d’édition Grist
 const editableCols = ref<string[]>([]);
 const tableRef = ref<any | null>(null);
-
 declare const grist: any;
 
 if (typeof grist !== 'undefined') {
@@ -56,51 +54,32 @@ const toolbarHeight = 25;
 const headerRowHeight = 25;
 
 const headerHeight = computed(() => headerRowHeight * 3);
-
-const lanesTopOffset = computed(() => {
-  return toolbarHeight + headerHeight.value + headerToFirstLaneGap;
-});
+const lanesTopOffset = computed(
+  () => toolbarHeight + headerHeight.value + headerToFirstLaneGap,
+);
 
 const offset = ref<number>(0);
 
+// refs DOM + hauteurs label
 const bodyRef = ref<HTMLDivElement | null>(null);
 const sidebarRef = ref<InstanceType<typeof GanttSidebar> | null>(null);
-
-// hauteurs réelles des labels de lanes
 const laneLabelHeights = ref<Record<number, number>>({});
 
-// --- Tâches / lanes via composable (vertical) ---
-const {
-  lanes,
-  tasksWithLane,
-  laneHeightFor,
-  laneTopPx,
-  visibleTasks,          // pour l’instant calculé avec min/max factices
-  leftPercentVisible,    // idem
-  widthPercentVisible,   // idem
-  topPx,
-} = useGanttTasks(
-  computed(() => props.tasks),
-  laneLabelHeights,
-  baseLaneHeight,
-  laneOuterGap,
-  subRowGap,
-  // minDate / maxDate seront remis par la timeline juste après
-  // on passe des refs temporaires ici si ton implémentation les utilise
-  ref(new Date()),
-  ref(new Date())
-);
-
-// Date de référence à partir des tâches
+// référence temps (simple) à partir des tâches brutes
 const referenceDate = computed(() => {
-  if (!tasksWithLane.value.length) return new Date();
+  const withStart = props.tasks.filter((t) => t.start);
+  if (!withStart.length) return new Date();
   return new Date(
-    Math.min(...tasksWithLane.value.map((t) => t.startDate.getTime())),
+    Math.min(
+      ...withStart.map((t) => new Date(t.start as string).getTime()),
+    ),
   );
 });
 
-// --- Timeline (dates / buckets) via composable ---
+// Timeline
 const {
+  minDate,
+  maxDate,
   timeOfDayBuckets,
   weekWeekBuckets,
   weekDayBuckets,
@@ -116,13 +95,26 @@ const {
   dayStartHour,
 });
 
+// Tâches / lanes
+const {
+  lanes,
+  laneHeightFor,
+  laneTopPx,
+  visibleTasks,
+  leftPercentVisible,
+  widthPercentVisible,
+  topPx,
+} = useGanttTasks(
+  computed(() => props.tasks),
+  laneLabelHeights,
+  baseLaneHeight,
+  laneOuterGap,
+  subRowGap,
+  minDate,
+  maxDate,
+);
 
-
-// Si tu veux recalcule visibleTasks / left/width avec les vrais min/max ici,
-// soit tu le fais dans useGanttTasks, soit tu laisses comme tu l’avais
-// (logique déjà portée dans le composable).
-
-// --- Popup tâche via composable ---
+// Popup
 const {
   isPopupOpen,
   selectedTask,
@@ -140,9 +132,9 @@ function resetOffset() {
   offset.value = 0;
 }
 
-// fonction utilitaire: mesure des labels et mise à jour des hauteurs
+// mesure labels + synchro scroll
 async function recomputeLaneLabelHeights() {
-  await nextTick();
+  await Promise.resolve();
   if (
     sidebarRef.value &&
     typeof (sidebarRef.value as any).getLaneLabelHeights === 'function'
@@ -156,33 +148,6 @@ async function recomputeLaneLabelHeights() {
   }
 }
 
-// centrage sur aujourd’hui + première mesure
-onMounted(async () => {
-  await recomputeLaneLabelHeights();
-
-  const body = bodyRef.value;
-  if (!body) return;
-
-  const gantt = body.closest('.gantt-right');
-  if (!gantt) return;
-
-  const header = gantt.querySelector('.gantt-header');
-  if (!header) return;
-
-  const todayCell = header.querySelector(
-    '.gantt-header-cell.is-today',
-  ) as HTMLElement | null;
-  if (!todayCell) return;
-
-  const bodyRect = body.getBoundingClientRect();
-  const cellRect = todayCell.getBoundingClientRect();
-
-  const offsetLeft = cellRect.left - bodyRect.left + body.scrollLeft;
-  body.scrollLeft =
-    offsetLeft - body.clientWidth / 2 + todayCell.offsetWidth / 2;
-});
-
-// remesure chaque fois que les lanes changent (nouvelles données, etc.)
 watch(lanes, () => {
   recomputeLaneLabelHeights();
 });
@@ -197,7 +162,6 @@ function onBodyScroll(e: Event) {
   }
 }
 </script>
-
 
 <template>
   <div class="gantt-wrapper">

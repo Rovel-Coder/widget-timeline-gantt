@@ -1,7 +1,6 @@
 // src/composables/useGanttTasks.ts
 import { computed } from 'vue';
 import type { Ref } from 'vue';
-
 import type { Task } from '../gristBridge';
 
 export type ParsedTask = Task & {
@@ -34,7 +33,7 @@ export function useGanttTasks(
   laneOuterGap: number,
   subRowGap: number,
   minDate: Ref<Date>,
-  maxDate: Ref<Date>
+  maxDate: Ref<Date>,
 ) {
   // 1) Tâches avec dates JS (durée en heures)
   const parsedTasks = computed<ParsedTask[]>(() =>
@@ -44,11 +43,15 @@ export function useGanttTasks(
         const startDate = new Date(t.start as string);
         const hours = Number(t.duration);
         const endDate = new Date(
-          startDate.getTime() + hours * 60 * 60 * 1000
+          startDate.getTime() + hours * 60 * 60 * 1000,
         );
         return { ...t, startDate, endDate };
       }),
   );
+
+  // DEBUG
+  console.log('[Gantt] tasksProp length =', tasksProp.value.length);
+  console.log('[Gantt] parsedTasks length =', parsedTasks.value.length);
 
   // 2) Lanes hiérarchiques
   const lanes = computed<Lane[]>(() => {
@@ -151,7 +154,6 @@ export function useGanttTasks(
     return result;
   });
 
-  // nombre d’étages (rows) par lane
   const laneRowCount = computed<Record<number, number>>(() => {
     const map: Record<number, number> = {};
     for (const t of tasksWithLane.value) {
@@ -162,7 +164,6 @@ export function useGanttTasks(
     return map;
   });
 
-  // hauteur réelle d’une lane (tous les étages + label wrap)
   function laneHeightFor(laneIndex: number): number {
     const rows = laneRowCount.value[laneIndex] ?? 1;
     const barsHeight =
@@ -172,7 +173,6 @@ export function useGanttTasks(
     return Math.max(barsHeight, labelHeight);
   }
 
-  // top d’une lane (somme des hauteurs précédentes + gaps externes)
   function laneTopPx(laneIndex: number) {
     let top = 10;
     for (let i = 0; i < laneIndex; i++) {
@@ -181,7 +181,6 @@ export function useGanttTasks(
     return top;
   }
 
-  // largeur / position horizontale (en %), clampée sur min/max
   const totalMs = computed(() => {
     const diff = maxDate.value.getTime() - minDate.value.getTime();
     return diff || 1;
@@ -212,6 +211,9 @@ export function useGanttTasks(
       .filter((t): t is VisibleTask => t !== null);
   });
 
+  // DEBUG
+  console.log('[Gantt] visibleTasks length =', visibleTasks.value.length);
+
   function leftPercentVisible(task: VisibleTask) {
     return (
       ((task.visibleStart.getTime() - minDate.value.getTime()) /
@@ -228,13 +230,12 @@ export function useGanttTasks(
     );
   }
 
-  // top d’une barre (empilement interne, centré dans la lane)
   function topPx(task: TaskWithLane) {
     const laneTop = laneTopPx(task.laneIndex);
     const laneH = laneHeightFor(task.laneIndex);
     const rows = laneRowCount.value[task.laneIndex] ?? 1;
 
-    const rowHeight = 24; // même valeur que .gantt-bar { height: 24px; }
+    const rowHeight = 24;
     const rowIndex = task.subRowIndex ?? 0;
 
     const rowsBlockHeight =
@@ -251,10 +252,8 @@ export function useGanttTasks(
   }
 
   return {
-    parsedTasks,
     lanes,
     tasksWithLane,
-    laneRowCount,
     laneHeightFor,
     laneTopPx,
     visibleTasks,

@@ -9,7 +9,7 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'V1.0.4';
+const WIDGET_VERSION = 'V1.0.5';
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -114,12 +114,17 @@ const {
   maxDate,
 );
 
-// Popup
+// Popup (+ édition Grist)
 const {
   isPopupOpen,
   selectedTask,
   onTaskClick,
-} = useGanttPopup();
+  updateRecordInGrist,
+  localTask,
+} = useGanttPopup({
+  tableRef,
+  editableCols,
+});
 
 // Navigation
 function goPrev() {
@@ -341,27 +346,57 @@ function onBodyScroll(e: Event) {
       >
         <div class="gantt-task-popup-inner">
           <div class="gantt-task-popup-title">
-            {{ selectedTask.name || 'Tâche' }}
+            <input
+              v-model="localTask.name"
+              class="gantt-task-input"
+              type="text"
+              placeholder="Nom de la tâche"
+            />
           </div>
           <div class="gantt-task-popup-row">
-            Début : {{ selectedTask.startDate.toLocaleString('fr-FR') }}
+            Début :
+            <input
+              v-model="localTask.start"
+              type="datetime-local"
+              class="gantt-task-input"
+            />
           </div>
           <div class="gantt-task-popup-row">
-            Durée : {{ selectedTask.duration }} h
+            Durée :
+            <input
+              v-model.number="localTask.duration"
+              type="number"
+              min="0"
+              step="0.5"
+              class="gantt-task-input small"
+            />
+            h
           </div>
           <div
             class="gantt-task-popup-row"
-            v-if="selectedTask.comment"
           >
-            Commentaire : {{ selectedTask.comment }}
+            Commentaire :
+            <textarea
+              v-model="localTask.comment"
+              class="gantt-task-textarea"
+              rows="2"
+            />
           </div>
 
-          <button
-            class="gantt-task-popup-close"
-            @click="isPopupOpen = false"
-          >
-            Fermer
-          </button>
+          <div class="gantt-task-popup-actions">
+            <button
+              class="gantt-task-popup-close"
+              @click="isPopupOpen = false"
+            >
+              Fermer
+            </button>
+            <button
+              class="gantt-task-popup-save"
+              @click="updateRecordInGrist"
+            >
+              Enregistrer dans Grist
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -385,7 +420,7 @@ function onBodyScroll(e: Event) {
 .gantt-wrapper {
   display: grid;
   grid-template-columns: 200px 1fr;
-  grid-template-rows: auto 1fr; /* la 1re ligne prend la hauteur réelle (toolbar + header) */
+  grid-template-rows: auto 1fr;
   height: 100%;
   border: 1px solid #374151;
   background-color: #111827;
@@ -393,7 +428,7 @@ function onBodyScroll(e: Event) {
   color: #e5e7eb;
 }
 
-/* Zone haut-gauche (même ligne que toolbar+header) */
+/* Zone haut-gauche */
 .gantt-top-left {
   grid-column: 1;
   grid-row: 1;
@@ -412,7 +447,7 @@ function onBodyScroll(e: Event) {
   color: #9ca3af;
 }
 
-/* Partie droite : occupe les 2 lignes (header + corps) */
+/* Partie droite */
 .gantt-right {
   grid-column: 2;
   grid-row: 1 / span 2;
@@ -422,7 +457,7 @@ function onBodyScroll(e: Event) {
   overflow: hidden;
 }
 
-/* Sidebar en bas à gauche */
+/* Sidebar */
 .gantt-sidebar {
   grid-column: 1;
   grid-row: 2;
@@ -558,8 +593,44 @@ function onBodyScroll(e: Event) {
   margin-bottom: 4px;
 }
 
-.gantt-task-popup-close {
+/* champs d’édition */
+.gantt-task-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #020617;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  color: #e5e7eb;
+  font-size: 11px;
+  padding: 2px 4px;
+  margin-left: 4px;
+}
+
+.gantt-task-input.small {
+  width: 80px;
+}
+
+.gantt-task-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #020617;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  color: #e5e7eb;
+  font-size: 11px;
+  padding: 2px 4px;
+  margin-top: 2px;
+}
+
+.gantt-task-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
   margin-top: 8px;
+}
+
+.gantt-task-popup-close,
+.gantt-task-popup-save {
   padding: 2px 8px;
   font-size: 11px;
   border-radius: 4px;
@@ -567,5 +638,10 @@ function onBodyScroll(e: Event) {
   background: #111827;
   color: #e5e7eb;
   cursor: pointer;
+}
+
+.gantt-task-popup-save {
+  background: #2563eb;
+  border-color: #2563eb;
 }
 </style>

@@ -397,7 +397,7 @@ function onBodyScroll(e: Event) {
 .gantt-top-left {
   grid-column: 1;
   grid-row: 1;
-  height: 103.5px;
+  height: 103px;
   background-color: #020617;
   border-right: 1px solid #374151;
   border-bottom: 1px solid #374151;

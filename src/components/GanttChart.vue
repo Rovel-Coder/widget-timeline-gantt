@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
 import type { Task } from '../gristBridge';
 
 import GanttSidebar from './GanttSidebar.vue';
@@ -17,7 +17,7 @@ const props = defineProps<{ tasks: Task[] }>();
 const timeScale = ref<'week' | 'month' | 'quarter'>('month');
 const dayStartHour = ref<number>(0);
 
-// contexte d’édition Grist
+// contexte d'édition Grist
 const editableCols = ref<string[]>([]);
 const tableRef = ref<any | null>(null);
 declare const grist: any;
@@ -126,15 +126,31 @@ const {
   editableCols,
 });
 
-// Navigation
+// Navigation ✅ CORRIGÉE
 function goPrev() {
   offset.value -= 1;
 }
 function goNext() {
   offset.value += 1;
 }
-function resetOffset() {
-  offset.value = 0;
+async function goToToday() {
+  // ✅ BOUTON AUJOURD'HUI CORRIGÉ
+  offset.value = 0; // Remet au centre
+  timeScale.value = 'week'; // Vue semaine pour bien voir aujourd'hui
+  
+  // Force reactivity + scroll en haut
+  await nextTick();
+  if (bodyRef.value) {
+    bodyRef.value.scrollTop = 0;
+  }
+  if (sidebarRef.value) {
+    const sidebarEl = (sidebarRef.value as any).$el as HTMLElement;
+    if (sidebarEl) sidebarEl.scrollTop = 0;
+  }
+}
+function changeScale(newScale: 'week' | 'month' | 'quarter') {
+  timeScale.value = newScale;
+  offset.value = 0; // Reset offset lors du changement d'échelle
 }
 
 // mesure labels + synchro scroll
@@ -181,8 +197,8 @@ function onBodyScroll(e: Event) {
         :time-scale="timeScale"
         @prev="goPrev"
         @next="goNext"
-        @today="resetOffset"
-        @change-scale="(s) => { timeScale = s; offset = 0; }"
+        @today="goToToday"
+        @change-scale="changeScale"
       />
 
       <!-- Header multi-lignes -->
@@ -338,7 +354,7 @@ function onBodyScroll(e: Event) {
         </div>
       </div>
 
-      <!-- Pop-up d’info tâche -->
+      <!-- Pop-up d'info tâche -->
       <div
         v-if="isPopupOpen && selectedTask"
         class="gantt-task-popup"
@@ -372,9 +388,7 @@ function onBodyScroll(e: Event) {
             />
             h
           </div>
-          <div
-            class="gantt-task-popup-row"
-          >
+          <div class="gantt-task-popup-row">
             Commentaire :
             <textarea
               v-model="localTask.comment"
@@ -415,6 +429,7 @@ function onBodyScroll(e: Event) {
     />
   </div>
 </template>
+
 
 <style scoped>
 .gantt-wrapper {

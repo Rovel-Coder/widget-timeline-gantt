@@ -9,7 +9,7 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'V1.0.5';
+const WIDGET_VERSION = 'V1.0.1'; // Version incrémentée pour le fix
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -78,6 +78,7 @@ const referenceDate = computed(() => {
 
 // Timeline
 const {
+  baseMinDate, // <-- AJOUTÉ ICI pour le calcul précis
   minDate,
   maxDate,
   timeOfDayBuckets,
@@ -126,19 +127,35 @@ const {
   editableCols,
 });
 
-// Navigation ✅ CORRIGÉE
+// Navigation
 function goPrev() {
   offset.value -= 1;
 }
 function goNext() {
   offset.value += 1;
 }
+
+// ✅ FONCTION CORRIGÉE
 async function goToToday() {
-  // ✅ BOUTON AUJOURD'HUI CORRIGÉ
-  offset.value = 0; // Remet au centre
-  timeScale.value = 'week'; // Vue semaine pour bien voir aujourd'hui
+  // 1. On force la vue semaine
+  timeScale.value = 'week'; 
   
-  // Force reactivity + scroll en haut
+  // 2. Calcul du décalage nécessaire
+  // baseMinDate correspond au "Lundi de la semaine 0" (début du projet)
+  const base = new Date(baseMinDate.value);
+  const now = new Date();
+  
+  // On neutralise les heures pour un calcul juste en jours/semaines
+  base.setHours(0,0,0,0);
+  now.setHours(0,0,0,0);
+
+  const diffMs = now.getTime() - base.getTime();
+  const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+
+  // Si diffMs est négatif (on est avant le projet), Math.floor gère correctement le négatif
+  offset.value = Math.floor(diffMs / oneWeekMs);
+  
+  // 3. Scroll reset
   await nextTick();
   if (bodyRef.value) {
     bodyRef.value.scrollTop = 0;
@@ -148,6 +165,7 @@ async function goToToday() {
     if (sidebarEl) sidebarEl.scrollTop = 0;
   }
 }
+
 function changeScale(newScale: 'week' | 'month' | 'quarter') {
   timeScale.value = newScale;
   offset.value = 0; // Reset offset lors du changement d'échelle
@@ -430,7 +448,6 @@ function onBodyScroll(e: Event) {
   </div>
 </template>
 
-
 <style scoped>
 .gantt-wrapper {
   display: grid;
@@ -660,3 +677,4 @@ function onBodyScroll(e: Event) {
   border-color: #2563eb;
 }
 </style>
+

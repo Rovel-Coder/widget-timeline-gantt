@@ -9,7 +9,7 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'V1.0.1'; // Version incrémentée pour le fix
+const WIDGET_VERSION = 'V1.0.0'; // Version incrémentée pour le fix
 
 const props = defineProps<{ tasks: Task[] }>();
 

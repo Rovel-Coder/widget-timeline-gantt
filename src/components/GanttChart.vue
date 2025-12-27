@@ -141,7 +141,7 @@ const referenceDate = computed(() => {
 // Timeline
 const {
   baseMinDate,
-  // baseMaxDate,
+  baseMaxDate,
   minDate,
   maxDate,
   timeOfDayBuckets,
@@ -187,10 +187,6 @@ const {
   localTask,
 } = useGanttPopup({ tableRef, editableCols });
 
-// origine fixe P4S : lundi de la semaine 52 2025 (22/12/2025)
-const p4sBase = new Date(2025, 11, 22);
-p4sBase.setHours(0, 0, 0, 0);
-
 // Navigation
 function goPrev() {
   if (timeScale.value === 'p4s') {
@@ -231,27 +227,58 @@ async function goToToday() {
   }
 }
 
+/**
+ * Au changement de vue :
+ * - on met à jour timeScale
+ * - on recalcule un offset tel que la période courante contienne "aujourd'hui"
+ *   en utilisant baseMinDate/baseMaxDate de la nouvelle vue.
+ */
 function changeScale(newScale: 'week' | 'month' | 'quarter' | 'p4s') {
   timeScale.value = newScale;
-
-  // on repart toujours d'un offset neutre
-  offset.value = 0;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
 
-  if (newScale === 'p4s') {
-    // blocs de 4 semaines à partir de la semaine 52 (22/12/2025)
-    const diffMs = today.getTime() - p4sBase.getTime();
-    const periodMs = 4 * oneWeekMs;
-    offset.value = Math.floor(diffMs / periodMs);
+  // On force le recalcul des bornes de base avec le nouveau timeScale
+  const start0 = new Date(baseMinDate.value);
+  const end0 = new Date(baseMaxDate.value);
+  start0.setHours(0, 0, 0, 0);
+  end0.setHours(23, 59, 59, 999);
+
+  if (newScale === 'week' || newScale === 'p4s') {
+    // semaines ISO : 1 offset = 1 semaine
+    const diffMs = today.getTime() - start0.getTime();
+    const kWeek = Math.floor(diffMs / oneWeekMs);
+
+    if (newScale === 'week') {
+      offset.value = kWeek;
+    } else {
+      // P4S : un bloc = 4 semaines
+      const kBlock = Math.floor(kWeek / 4);
+      offset.value = kBlock * 4;
+    }
     return;
   }
 
-  // pour les autres vues, comportement simple: recentrage
-  offset.value = 0;
+  if (newScale === 'month') {
+    const baseYear = start0.getFullYear();
+    const baseMonth = start0.getMonth();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    offset.value = (year - baseYear) * 12 + (month - baseMonth);
+    return;
+  }
+
+  if (newScale === 'quarter') {
+    const baseYear = start0.getFullYear();
+    const baseQuarter = Math.floor(start0.getMonth() / 3);
+    const year = today.getFullYear();
+    const quarter = Math.floor(today.getMonth() / 3);
+    offset.value = (year - baseYear) * 4 + (quarter - baseQuarter);
+    return;
+  }
 }
 
 // mesure labels + synchro scroll
@@ -282,6 +309,7 @@ function onBodyScroll(e: Event) {
   }
 }
 </script>
+
 
 <template>
   <div class="gantt-wrapper">

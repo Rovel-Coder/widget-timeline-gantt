@@ -9,19 +9,26 @@ export type TimeOfDayBucket = Bucket & { slot: 'morning' | 'afternoon' | 'night'
 type TimelineArgs = {
   timeScale: Ref<TimeScale>;
   offset: Ref<number>;
-  referenceDateSource: () => Date;     // fonction qui renvoie la date de référence (calculée à partir des tâches)
+  referenceDateSource: () => Date;     // encore disponible si besoin ailleurs
   dayStartHour: Ref<number>;
 };
 
 export function useGanttTimeline(args: TimelineArgs) {
   const { timeScale, offset, referenceDateSource, dayStartHour } = args;
 
-  // date de référence (min de toutes les dates de début)
+  // date de référence issue des tâches (toujours exposée si tu veux t'en servir)
   const referenceDate = computed(() => referenceDateSource());
 
-  // bornes "de base" avant décalage offset
+  // date du jour, normalisée
+  const todayRef = computed(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+
+  // bornes "de base" avant décalage offset, basées sur aujourd'hui
   const baseMinDate = computed(() => {
-    const d = new Date(referenceDate.value);
+    const d = new Date(todayRef.value);
 
     if (timeScale.value === 'week' || timeScale.value === 'p4s') {
       const day = d.getDay();
@@ -56,7 +63,7 @@ export function useGanttTimeline(args: TimelineArgs) {
   });
 
   const baseMaxDate = computed(() => {
-    const d = new Date(referenceDate.value);
+    const d = new Date(todayRef.value);
 
     if (timeScale.value === 'week' || timeScale.value === 'p4s') {
       const day = d.getDay();
@@ -104,10 +111,10 @@ export function useGanttTimeline(args: TimelineArgs) {
     }
 
     if (timeScale.value === 'month') {
-      const ref = new Date(referenceDate.value);
-      ref.setMonth(ref.getMonth() + k, 1);
-      ref.setHours(0, 0, 0, 0);
-      return ref;
+      const d = new Date(todayRef.value);
+      d.setMonth(d.getMonth() + k, 1);
+      d.setHours(0, 0, 0, 0);
+      return d;
     }
 
     const d = new Date(baseMinDate.value);
@@ -129,10 +136,10 @@ export function useGanttTimeline(args: TimelineArgs) {
     }
 
     if (timeScale.value === 'month') {
-      const ref = new Date(referenceDate.value);
-      ref.setMonth(ref.getMonth() + k + 1, 0);
-      ref.setHours(23, 59, 59, 999);
-      return ref;
+      const d = new Date(todayRef.value);
+      d.setMonth(d.getMonth() + k + 1, 0);
+      d.setHours(23, 59, 59, 999);
+      return d;
     }
 
     const d = new Date(baseMaxDate.value);
@@ -404,6 +411,7 @@ export function useGanttTimeline(args: TimelineArgs) {
 
   return {
     referenceDate,
+    todayRef,
     baseMinDate,
     baseMaxDate,
     minDate,
@@ -420,4 +428,3 @@ export function useGanttTimeline(args: TimelineArgs) {
     quarterWeekBuckets,
   };
 }
-

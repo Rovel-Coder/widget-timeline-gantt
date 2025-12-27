@@ -7,7 +7,7 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'Mk 1';
+const WIDGET_VERSION = 'V1.0.1-SECURE';
 
 // 🛡️ FONCTION DE SANITIZATION GLOBALE (CRITIQUE XSS)
 const sanitize = (value: any): string => {
@@ -141,7 +141,7 @@ const referenceDate = computed(() => {
 // Timeline
 const {
   baseMinDate,
-  baseMaxDate,
+  // baseMaxDate,
   minDate,
   maxDate,
   timeOfDayBuckets,
@@ -187,6 +187,10 @@ const {
   localTask,
 } = useGanttPopup({ tableRef, editableCols });
 
+// origine fixe pour les calculs de périodes : lundi 1er janvier 2024 (ISO S1)
+const calendarBase = new Date(2024, 0, 1);
+calendarBase.setHours(0, 0, 0, 0);
+
 // Navigation
 function goPrev() {
   if (timeScale.value === 'p4s') {
@@ -230,53 +234,44 @@ async function goToToday() {
 function changeScale(newScale: 'week' | 'month' | 'quarter' | 'p4s') {
   timeScale.value = newScale;
 
+  // on repart toujours d'un offset neutre
+  offset.value = 0;
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  // bornes base (offset 0) de la nouvelle vue
-  const start0 = new Date(baseMinDate.value);
-  const end0 = new Date(baseMaxDate.value);
-  start0.setHours(0, 0, 0, 0);
-  end0.setHours(23, 59, 59, 999);
 
   const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
 
   if (newScale === 'week') {
-    // périodes = semaines ISO
-    const diffMs = today.getTime() - start0.getTime();
-    const k = Math.floor(diffMs / oneWeekMs);
-    offset.value = k;
+    // semaines ISO basées sur calendarBase
+    const diffMs = today.getTime() - calendarBase.getTime();
+    offset.value = Math.floor(diffMs / oneWeekMs);
     return;
   }
 
   if (newScale === 'month') {
-    // périodes = mois
-    const baseYear = start0.getFullYear();
-    const baseMonth = start0.getMonth();
+    const baseYear = calendarBase.getFullYear();
+    const baseMonth = calendarBase.getMonth();
     const year = today.getFullYear();
     const month = today.getMonth();
-    const k = (year - baseYear) * 12 + (month - baseMonth);
-    offset.value = k;
+    offset.value = (year - baseYear) * 12 + (month - baseMonth);
     return;
   }
 
   if (newScale === 'quarter') {
-    // périodes = trimestres
-    const baseYear = start0.getFullYear();
-    const baseQuarter = Math.floor(start0.getMonth() / 3);
+    const baseYear = calendarBase.getFullYear();
+    const baseQuarter = Math.floor(calendarBase.getMonth() / 3);
     const year = today.getFullYear();
     const quarter = Math.floor(today.getMonth() / 3);
-    const k = (year - baseYear) * 4 + (quarter - baseQuarter);
-    offset.value = k;
+    offset.value = (year - baseYear) * 4 + (quarter - baseQuarter);
     return;
   }
 
   if (newScale === 'p4s') {
-    // périodes = blocs de 4 semaines (élargis visuellement)
+    // blocs de 4 semaines
+    const diffMs = today.getTime() - calendarBase.getTime();
     const periodMs = 4 * oneWeekMs;
-    const diffMs = today.getTime() - start0.getTime();
-    const k = Math.floor(diffMs / periodMs);
-    offset.value = k;
+    offset.value = Math.floor(diffMs / periodMs);
     return;
   }
 }
@@ -309,6 +304,7 @@ function onBodyScroll(e: Event) {
   }
 }
 </script>
+
 
 <template>
   <div class="gantt-wrapper">

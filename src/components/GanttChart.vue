@@ -43,8 +43,13 @@ if (typeof grist !== 'undefined') {
   grist.onRecords((_records: any[], mappings: any) => {
     if (mappings?.columns?.editableCols) {
       const rawEditable = mappings.columns.editableCols;
-      editableCols.value = Array.isArray(rawEditable) 
-        ? rawEditable.filter((col: string) => typeof col === 'string' && col.length > 0 && col.length < 100)
+      editableCols.value = Array.isArray(rawEditable)
+        ? rawEditable.filter(
+            (col: string) =>
+              typeof col === 'string' &&
+              col.length > 0 &&
+              col.length < 100,
+          )
         : [];
     } else {
       editableCols.value = [];
@@ -61,7 +66,9 @@ const toolbarHeight = 26;
 const headerRowHeight = 25;
 
 const headerHeight = computed(() => headerRowHeight * 3);
-const lanesTopOffset = computed(() => toolbarHeight + headerHeight.value + headerToFirstLaneGap);
+const lanesTopOffset = computed(
+  () => toolbarHeight + headerHeight.value + headerToFirstLaneGap,
+);
 
 const offset = ref<number>(0);
 
@@ -85,22 +92,23 @@ interface SafeTask {
   content?: string;
 }
 
-// 🛡️ TÂCHES SANITISÉES ET VALIDÉES TypeScript (FIX TS2345 + TS2769)
+// 🛡️ TÂCHES SANITISÉES ET VALIDÉES TypeScript
 const safeTasks = computed((): SafeTask[] => {
   return props.tasks
     .map((task): SafeTask | null => {
-      // ✅ ID: number obligatoire
+      // ID obligatoire
       const id = Number(task.id);
       if (isNaN(id)) return null;
 
-      // ✅ Date valide obligatoire (FIX TS2769)
-      let startDate: Date;
-      if (task.start && typeof task.start === 'string') {
-        startDate = new Date(task.start);
-        if (isNaN(startDate.getTime())) return null;
-      } else {
-        startDate = new Date();
+      // Date valide obligatoire (string ou Date)
+      let startDate: Date | null = null;
+      if (task.start instanceof Date) {
+        startDate = task.start;
+      } else if (typeof task.start === 'string') {
+        const d = new Date(task.start);
+        if (!isNaN(d.getTime())) startDate = d;
       }
+      if (!startDate) return null;
 
       return {
         id,
@@ -108,9 +116,10 @@ const safeTasks = computed((): SafeTask[] => {
         comment: sanitize(task.comment ?? ''),
         start: startDate,
         duration: Math.max(0.5, Math.min(1000, Number(task.duration) || 1)),
-        color: task.color && /^#?[0-9A-Fa-f]{3,8}$/.test(task.color) 
-          ? task.color 
-          : '#4caf50',
+        color:
+          task.color && /^#?[0-9A-Fa-f]{3,8}$/.test(task.color)
+            ? task.color
+            : '#4caf50',
         groupBy: task.groupBy ? sanitize(task.groupBy) : null,
         groupBy2: task.groupBy2 ? sanitize(task.groupBy2) : null,
         isLocked: Boolean(task.isLocked),
@@ -122,7 +131,9 @@ const safeTasks = computed((): SafeTask[] => {
 });
 
 const referenceDate = computed(() => {
-  const withStart = safeTasks.value.filter((t) => t.start && !isNaN(t.start.getTime()));
+  const withStart = safeTasks.value.filter(
+    (t) => t.start && !isNaN(t.start.getTime()),
+  );
   if (!withStart.length) return new Date();
   return new Date(Math.min(...withStart.map((t) => t.start.getTime())));
 });
@@ -147,7 +158,7 @@ const {
   dayStartHour,
 });
 
-// Tâches / lanes (✅ TypeScript compatible - SafeTask → Task)
+// Tâches / lanes
 const {
   lanes,
   laneHeightFor,
@@ -157,7 +168,7 @@ const {
   widthPercentVisible,
   topPx,
 } = useGanttTasks(
-  safeTasks as any, // ✅ Cast safe: SafeTask étend Task
+  safeTasks as any, // SafeTask est compatible avec Task
   laneLabelHeights,
   baseLaneHeight,
   laneOuterGap,
@@ -185,15 +196,15 @@ function goNext() {
 }
 
 async function goToToday() {
-  timeScale.value = 'week'; 
+  timeScale.value = 'week';
   const base = new Date(baseMinDate.value);
   const now = new Date();
-  base.setHours(0,0,0,0);
-  now.setHours(0,0,0,0);
+  base.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
   const diffMs = now.getTime() - base.getTime();
   const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
   offset.value = Math.max(-50, Math.floor(diffMs / oneWeekMs));
-  
+
   await nextTick();
   if (bodyRef.value) {
     bodyRef.value.scrollTop = 0;
@@ -227,7 +238,6 @@ async function recomputeLaneLabelHeights() {
   }
 }
 
-// ✅ Watch avec type explicite
 watch(lanes, recomputeLaneLabelHeights, { flush: 'post' });
 
 function onBodyScroll(e: Event) {
@@ -240,6 +250,8 @@ function onBodyScroll(e: Event) {
   }
 }
 </script>
+
+
 
 
 
@@ -287,7 +299,7 @@ function onBodyScroll(e: Event) {
             </div>
           </template>
 
-          <template else>
+          <template v-else>
             <div
               v-for="b in quarterMonthBuckets"
               :key="'qm-' + b.left"
@@ -307,7 +319,8 @@ function onBodyScroll(e: Event) {
               :key="'wd-' + b.left"
               class="gantt-header-cell"
               :class="{
-                'is-today': b.date && b.date.toDateString() === new Date().toDateString()
+                'is-today':
+                  b.date && b.date.toDateString() === new Date().toDateString()
               }"
               :style="{ left: b.left + '%', width: b.width + '%' }"
             >
@@ -326,7 +339,7 @@ function onBodyScroll(e: Event) {
             </div>
           </template>
 
-          <template else>
+          <template v-else>
             <div
               v-for="b in monthMonthBuckets"
               :key="'q2m-' + b.left"
@@ -362,7 +375,7 @@ function onBodyScroll(e: Event) {
             </div>
           </template>
 
-          <template else>
+          <template v-else>
             <div
               v-for="b in quarterWeekBuckets"
               :key="'qw-' + b.left"
@@ -380,6 +393,7 @@ function onBodyScroll(e: Event) {
         <div v-if="!visibleTasks.length" class="gantt-empty">
           Aucune tâche à afficher
         </div>
+
         <div v-else class="gantt-body-inner">
           <!-- Fond des lanes -->
           <div
@@ -392,7 +406,7 @@ function onBodyScroll(e: Event) {
             }"
           ></div>
 
-          <!-- 🛡️ BARRES DE TÂCHES SÉCURISÉES (via safeTasks) -->
+          <!-- 🛡️ BARRES DE TÂCHES SÉCURISÉES -->
           <div
             v-for="task in visibleTasks"
             :key="task.id"
@@ -403,9 +417,8 @@ function onBodyScroll(e: Event) {
               width: widthPercentVisible(task) + '%',
               backgroundColor: task.color || '#4caf50'
             }"
-            @click="onTaskClick(task)"
+            @click="onTaskClick(task as any)"
           >
-            <!-- ✅ NOM SÉCURISÉ - jamais d'innerHTML -->
             <span class="gantt-label">{{ task.name }}</span>
           </div>
         </div>
@@ -427,6 +440,7 @@ function onBodyScroll(e: Event) {
               maxlength="100"
             />
           </div>
+
           <div class="gantt-task-popup-row">
             Début :
             <input
@@ -435,6 +449,7 @@ function onBodyScroll(e: Event) {
               class="gantt-task-input"
             />
           </div>
+
           <div class="gantt-task-popup-row">
             Durée :
             <input
@@ -447,6 +462,7 @@ function onBodyScroll(e: Event) {
             />
             h
           </div>
+
           <div class="gantt-task-popup-row">
             Commentaire :
             <textarea
@@ -489,6 +505,7 @@ function onBodyScroll(e: Event) {
     />
   </div>
 </template>
+
 
 
 <style scoped>

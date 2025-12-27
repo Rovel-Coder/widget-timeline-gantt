@@ -1,13 +1,17 @@
+// src/composables/useGanttTasks.ts
 import { computed } from 'vue';
-import type { Ref } from 'vue';  // ✅ FIX TS1484: type import
-import type { Task } from '../gristBridge';  // ✅ FIX TS2307: bon chemin
+import type { Ref } from 'vue';
+import type { Task } from '../gristBridge';
 
-// 🛡️ FONCTION SANITIZATION pour lanes
+// 🛡️ FONCTION SANITIZATION pour labels (groupes)
 const sanitizeLabel = (value: any): string => {
   if (typeof value !== 'string') return '';
   const div = document.createElement('div');
   div.textContent = value;
-  return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  return div.innerHTML.replace(
+    /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+    '',
+  );
 };
 
 export type ParsedTask = Task & {
@@ -42,31 +46,50 @@ export function useGanttTasks(
   minDate: Ref<Date>,
   maxDate: Ref<Date>,
 ) {
-  // 1) Tâches parsées sécurisées
-  // Dans useGanttTasks, remplacer la section parsedTasks par :
-const parsedTasks = computed<ParsedTask[]>(() =>
-  tasksProp.value
-    .filter((t) => t.start && t.duration != null && !isNaN(Number(t.duration)))  // ✅ Filtre null start
-    .map((t) => {
-      // ✅ FIX TS2769: Null check + fallback safe
-      const startDate = t.start ? new Date(t.start) : new Date();  
-      if (isNaN(startDate.getTime())) return null;
-      
-      const hours = Math.max(0.1, Math.min(1000, Number(t.duration)));
-      const endDate = new Date(startDate.getTime() + hours * 60 * 60 * 1000);
-      
-      return { 
-        ...t, 
-        startDate, 
-        endDate,
-        name: sanitizeLabel(t.name)
-      };
-    })
-    .filter(Boolean) as ParsedTask[]
-);
+  // 1) Tâches parsées sécurisées (gestion Date | string | null)
+  const parsedTasks = computed<ParsedTask[]>(() =>
+    tasksProp.value
+      .filter(
+        (t) =>
+          t.start != null &&
+          t.duration != null &&
+          !isNaN(Number(t.duration)),
+      )
+      .map((t) => {
+        let startDate: Date | null = null;
 
+        if (t.start instanceof Date) {
+          // Grist renvoie un Date natif
+          startDate = t.start;
+        } else if (typeof t.start === 'string') {
+          // Grist renvoie une string (DateTime ou ISO)
+          startDate = new Date(t.start);
+        }
 
-  // 2) LANES SÉCURISÉES
+        if (!startDate || isNaN(startDate.getTime())) return null;
+
+        const hours = Math.max(0.1, Math.min(1000, Number(t.duration)));
+        const endDate = new Date(startDate.getTime() + hours * 60 * 60 * 1000);
+
+        // DEBUG (tu peux commenter une fois que tout est OK)
+        console.log('[Gantt parsed]', {
+          id: t.id,
+          start: t.start,
+          startDate,
+          endDate,
+        });
+
+        return {
+          ...t,
+          startDate,
+          endDate,
+          name: sanitizeLabel(t.name),
+        };
+      })
+      .filter(Boolean) as ParsedTask[],
+  );
+
+  // 2) Lanes hiérarchiques sécurisées
   const lanes = computed<Lane[]>(() => {
     const result: Lane[] = [];
     let nextIndex = 0;
@@ -79,6 +102,7 @@ const parsedTasks = computed<ParsedTask[]>(() =>
     }
 
     for (const [g1, tasks] of byGroup.entries()) {
+      // Ligne de groupe principale
       result.push({
         index: nextIndex++,
         groupBy: g1,
@@ -87,6 +111,7 @@ const parsedTasks = computed<ParsedTask[]>(() =>
         isGroupHeader: true,
       });
 
+      // Sous-groupes
       const seenSub = new Set<string>();
       for (const t of tasks) {
         const g2 = sanitizeLabel(t.groupBy2 ?? '');
@@ -101,10 +126,11 @@ const parsedTasks = computed<ParsedTask[]>(() =>
         });
       }
     }
+
     return result;
   });
 
-  // 3) Tâches avec laneIndex
+  // 3) Tâches avec laneIndex + subRowIndex
   const tasksWithLane = computed<TaskWithLane[]>(() => {
     const byKey = new Map<string, number>();
     for (const lane of lanes.value) {
@@ -129,7 +155,9 @@ const parsedTasks = computed<ParsedTask[]>(() =>
     }
 
     for (const [, tasks] of byLane.entries()) {
-      const sorted = [...tasks].sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+      const sorted = [...tasks].sort(
+        (a, b) => a.startDate.getTime() - b.startDate.getTime(),
+      );
       const rows: { tasks: { start: number; end: number }[] }[] = [];
 
       for (const t of sorted) {
@@ -139,9 +167,9 @@ const parsedTasks = computed<ParsedTask[]>(() =>
         let placed = false;
         for (let i = 0; i < rows.length; i++) {
           const row = rows[i];
-          if (!row || !row.tasks?.length) continue;  // ✅ FIX TS18048
+          if (!row || !row.tasks?.length) continue;
           const last = row.tasks[row.tasks.length - 1];
-          if (last && start >= last.end) {  // ✅ Null check
+          if (last && start >= last.end) {
             row.tasks.push({ start, end });
             result.push({ ...t, subRowIndex: i });
             placed = true;
@@ -156,10 +184,11 @@ const parsedTasks = computed<ParsedTask[]>(() =>
         }
       }
     }
+
     return result;
   });
 
-  // Fonctions utilitaires (inchangées)
+  // 4) Calcul hauteur / top des lanes
   const laneRowCount = computed<Record<number, number>>(() => {
     const map: Record<number, number> = {};
     for (const t of tasksWithLane.value) {
@@ -172,7 +201,11 @@ const parsedTasks = computed<ParsedTask[]>(() =>
 
   function laneHeightFor(laneIndex: number): number {
     const rows = laneRowCount.value[laneIndex] ?? 1;
-    const barsHeight = rows <= 1 ? baseLaneHeight : rows * baseLaneHeight + (rows - 1) * subRowGap;
+    const barsHeight =
+      rows <= 1
+        ? baseLaneHeight
+        : rows * baseLaneHeight + (rows - 1) * subRowGap;
+
     const labelHeight = laneLabelHeights.value[laneIndex] ?? baseLaneHeight;
     return Math.max(barsHeight, labelHeight);
   }
@@ -185,6 +218,7 @@ const parsedTasks = computed<ParsedTask[]>(() =>
     return top;
   }
 
+  // 5) Projection dans la fenêtre temporelle
   const totalMs = computed(() => {
     const diff = maxDate.value.getTime() - minDate.value.getTime();
     return diff || 1;
@@ -214,21 +248,33 @@ const parsedTasks = computed<ParsedTask[]>(() =>
   });
 
   function leftPercentVisible(task: VisibleTask) {
-    return ((task.visibleStart.getTime() - minDate.value.getTime()) / totalMs.value) * 100;
+    return (
+      ((task.visibleStart.getTime() - minDate.value.getTime()) /
+        totalMs.value) *
+      100
+    );
   }
 
   function widthPercentVisible(task: VisibleTask) {
-    return ((task.visibleEnd.getTime() - task.visibleStart.getTime()) / totalMs.value) * 100;
+    return (
+      ((task.visibleEnd.getTime() - task.visibleStart.getTime()) /
+        totalMs.value) *
+      100
+    );
   }
 
   function topPx(task: TaskWithLane) {
     const laneTop = laneTopPx(task.laneIndex);
     const laneH = laneHeightFor(task.laneIndex);
     const rows = laneRowCount.value[task.laneIndex] ?? 1;
+
     const rowHeight = 24;
     const rowIndex = task.subRowIndex ?? 0;
-    const rowsBlockHeight = rows * rowHeight + (rows - 1) * subRowGap;
+
+    const rowsBlockHeight =
+      rows * rowHeight + (rows - 1) * subRowGap;
     const topMargin = (laneH - rowsBlockHeight) / 2;
+
     return laneTop + topMargin + rowIndex * (rowHeight + subRowGap);
   }
 

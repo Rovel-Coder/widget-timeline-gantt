@@ -5,33 +5,36 @@ const sanitize = (value: any): string => {
   if (typeof value !== 'string') return '';
   const div = document.createElement('div');
   div.textContent = value;
-  return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  return div.innerHTML.replace(
+    /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+    '',
+  );
 };
 
 // Représentation d'une tâche APRÈS SANITIZATION (sécurisée)
 export type Task = {
   id: number;
-  name: string;               // ✅ TEXTE SÉCURISÉ affiché dans la barre
-  start: string | null;       // Date ISO ou null
-  duration: number | null;    // Durée en heures (nombre VALIDÉ)
-  groupBy: string | null;     // ✅ SÉCURISÉ
-  groupBy2: string | null;    // ✅ SÉCURISÉ
-  color: string | null;       // ✅ VALIDÉ regex
+  name: string;                  // ✅ TEXTE SÉCURISÉ affiché dans la barre
+  start: string | Date | null;   // ✅ Date ISO ou Date native ou null
+  duration: number | null;       // Durée en heures (nombre VALIDÉ)
+  groupBy: string | null;        // ✅ SÉCURISÉ
+  groupBy2: string | null;       // ✅ SÉCURISÉ
+  color: string | null;          // ✅ VALIDÉ regex
   isLocked: boolean | null;
   isGlobal: boolean | null;
-  comment: string | null;     // ✅ SÉCURISÉ
-  content?: string;           // ✅ SÉCURISÉ - texte brut construit
+  comment: string | null;        // ✅ SÉCURISÉ
+  content?: string;              // ✅ SÉCURISÉ - texte brut construit
 };
 
 // Infos supplémentaires pour édition (sécurisées)
 export type EditableContext = {
   tableId: string | null;
-  editableCols: string[];     // ✅ Noms colonnes VALIDÉS
+  editableCols: string[];        // ✅ Noms colonnes VALIDÉS
 };
 
 declare const grist: any;
 
-// Configuration des mappings (inchangée)
+// Configuration des mappings (panneau Grist)
 export const columnsConfig = [
   { name: 'startDate',  title: 'Date de début',    type: 'Date,DateTime', optional: false },
   { name: 'duration',   title: 'Durée',            type: 'Numeric,Int',   optional: false },
@@ -43,9 +46,9 @@ export const columnsConfig = [
   { name: 'isGlobal',   title: 'Est global',       type: 'Bool',          optional: true },
   { name: 'comment',    title: 'Commentaire',      type: 'Text',          optional: true },
 
-  { name: 'contentCols', title: 'Contenu',              allowMultiple: true, optional: true },
-  { name: 'editableCols',title: 'Colonnes éditables',   allowMultiple: true, optional: true },
-  { name: 'totalCols',   title: 'Colonnes de totaux',   allowMultiple: true, optional: true },
+  { name: 'contentCols', title: 'Contenu',             allowMultiple: true, optional: true },
+  { name: 'editableCols',title: 'Colonnes éditables',  allowMultiple: true, optional: true },
+  { name: 'totalCols',   title: 'Colonnes de totaux',  allowMultiple: true, optional: true },
 ];
 
 // Options widget (sécurisées)
@@ -68,21 +71,20 @@ export function initGrist(
   // 🛡️ OPTIONS WIDGET SÉCURISÉES
   grist.onOptions((options: any) => {
     const safe: WidgetOptions = {};
-    
+
     // ✅ VALIDATION dayStartHour
     if (options && typeof options.dayStartHour === 'number') {
       safe.dayStartHour = Math.max(0, Math.min(23, options.dayStartHour));
     }
-    
+
     // ✅ VALIDATION logoUrl (no XSS via src)
     if (options && typeof options.logoUrl === 'string') {
-      // Autoriser seulement URLs valides (pas de data: ou javascript:)
       const url = options.logoUrl.trim();
       if (url && !url.startsWith('data:') && !url.startsWith('javascript:')) {
         safe.logoUrl = url;
       }
     }
-    
+
     onOptionsChange?.(safe);
   });
 
@@ -102,63 +104,79 @@ export function initGrist(
       return;
     }
 
-    // 🛡️ MAPPING SÉCURISÉ TÂCHES (POINT CRITIQUE XSS)
-    const tasks: Task[] = mappedRecords.map((r: any, index: number): Task => {
-      // 1. ✅ ID VALIDÉ number
-      const id = Number(r.id);
-      if (isNaN(id)) {
-        console.warn(`[Grist] ID invalide ligne ${index + 1}`);
-        return null as any;
-      }
+    // 🛡️ MAPPING SÉCURISÉ TÂCHES
+    const tasks: Task[] = mappedRecords
+      .map((r: any, index: number): Task | null => {
+        // 1. ✅ ID VALIDÉ number
+        const id = Number(r.id);
+        if (isNaN(id)) {
+          console.warn(`[Grist] ID invalide ligne ${index + 1}`);
+          return null;
+        }
 
-      // 2. ✅ CONTENT SÉCURISÉ (plusieurs colonnes)
-      const parts: string[] = Array.isArray(r.contentCols)
-        ? r.contentCols
-            .filter((v: any) => v !== null && v !== undefined && v !== '')
-            .slice(0, 10)  // ✅ Limite 10 colonnes
-            .map((v: any) => sanitize(String(v)))  // ✅ SANITIZATION
-        : [];
+        // 2. ✅ CONTENT SÉCURISÉ (plusieurs colonnes)
+        const parts: string[] = Array.isArray(r.contentCols)
+          ? r.contentCols
+              .filter((v: any) => v !== null && v !== undefined && v !== '')
+              .slice(0, 10)
+              .map((v: any) => sanitize(String(v)))
+          : [];
 
-      const content = parts.join(' - ');
+        const content = parts.join(' - ');
 
-      // 3. ✅ NAME SÉCURISÉ (fallback sécurisé)
-      const rawName = r.Titre ?? r.Name ?? r.contentCols?.[0] ?? '';
-      const safeName = sanitize(String(rawName)).slice(0, 100);  // ✅ Max 100 chars
+        // 3. ✅ NAME SÉCURISÉ (fallback sécurisé)
+        const rawName = r.Titre ?? r.Name ?? r.contentCols?.[0] ?? '';
+        const safeName = sanitize(String(rawName)).slice(0, 100);
 
-      // 4. ✅ GROUPBY SÉCURISÉS
-      const safeGroupBy = r.groupBy ? sanitize(String(r.groupBy)).slice(0, 50) : null;
-      const safeGroupBy2 = r.groupBy2 ? sanitize(String(r.groupBy2)).slice(0, 50) : null;
+        // 4. ✅ GROUPBY SÉCURISÉS
+        const safeGroupBy =
+          r.groupBy != null ? sanitize(String(r.groupBy)).slice(0, 50) : null;
+        const safeGroupBy2 =
+          r.groupBy2 != null ? sanitize(String(r.groupBy2)).slice(0, 50) : null;
 
-      // 5. ✅ COULEUR VALIDÉE regex
-      const rawColor = r.color ? String(r.color).trim() : null;
-      const safeColor = rawColor && /^#?[0-9A-Fa-f]{3,8}$/i.test(rawColor) 
-        ? rawColor 
-        : null;
+        // 5. ✅ COULEUR VALIDÉE regex
+        const rawColor = r.color ? String(r.color).trim() : null;
+        const safeColor =
+          rawColor && /^#?[0-9A-Fa-f]{3,8}$/i.test(rawColor) ? rawColor : null;
 
-      // 6. ✅ DURÉE VALIDÉE
-      const safeDuration = r.duration != null 
-        ? Math.max(0.1, Math.min(1000, Number(r.duration)))
-        : null;
+        // 6. ✅ DURÉE VALIDÉE
+        const safeDuration =
+          r.duration != null
+            ? Math.max(0.1, Math.min(1000, Number(r.duration)))
+            : null;
 
-      // 7. ✅ COMMENT SÉCURISÉ
-      const safeComment = r.comment ? sanitize(String(r.comment)).slice(0, 500) : null;
+        // 7. ✅ COMMENT SÉCURISÉ
+        const safeComment =
+          r.comment != null ? sanitize(String(r.comment)).slice(0, 500) : null;
 
-      const task: Task = {
-        id,
-        name: safeName || content || 'Tâche',  // ✅ Jamais vide
-        start: r.startDate ?? null,
-        duration: safeDuration,
-        groupBy: safeGroupBy,
-        groupBy2: safeGroupBy2,
-        color: safeColor,
-        isLocked: Boolean(r.isLocked),
-        isGlobal: Boolean(r.isGlobal),
-        comment: safeComment,
-        content,
-      };
+        const task: Task = {
+          id,
+          name: safeName || content || 'Tâche',
+          start: r.startDate ?? null,     // ⬅️ peut être Date ou string
+          duration: safeDuration,
+          groupBy: safeGroupBy,
+          groupBy2: safeGroupBy2,
+          color: safeColor,
+          isLocked: r.isLocked ?? null,
+          isGlobal: r.isGlobal ?? null,
+          comment: safeComment,
+          content,
+        };
 
-      return task;
-    }).filter(Boolean);  // ✅ Filtre null tasks
+        // 🔍 DEBUG (tu peux le supprimer une fois que tout est ok)
+        console.log('[Grist->Task]', {
+          id: task.id,
+          startRaw: r.startDate,
+          typeofStartRaw: typeof r.startDate,
+          startInTask: task.start,
+          typeofStartInTask: typeof task.start,
+          durationRaw: r.duration,
+        });
+
+        return task;
+      })
+      // ✅ filter typé pour éviter TS7006 et obtenir Task[]
+      .filter((t: Task | null): t is Task => t !== null);
 
     // ✅ ENVOI TÂCHES SÉCURISÉES
     onTasksChange(tasks);
@@ -172,12 +190,13 @@ export function initGrist(
       const rawEditable = mappings.columns.editableCols;
       editableCols = Array.isArray(rawEditable)
         ? rawEditable
-            .filter((col: any) => 
-              typeof col === 'string' && 
-              col.length > 0 && 
-              col.length < 100  // ✅ Limite nom colonne
+            .filter(
+              (col: any) =>
+                typeof col === 'string' &&
+                col.length > 0 &&
+                col.length < 100,
             )
-            .map((col: string) => col.trim())  // ✅ Trim
+            .map((col: string) => col.trim())
         : [];
     }
 
@@ -187,4 +206,3 @@ export function initGrist(
     });
   });
 }
-

@@ -20,7 +20,7 @@ const sanitize = (value: any): string => {
 const props = defineProps<{ tasks: Task[] }>();
 
 // état global
-const timeScale = ref<'week' | 'month' | 'quarter'>('month');
+const timeScale = ref<'week' | 'month' | 'quarter' | 'p4s'>('month');
 const dayStartHour = ref<number>(0);
 
 // contexte d'édition Grist
@@ -217,7 +217,7 @@ async function goToToday() {
   }
 }
 
-function changeScale(newScale: 'week' | 'month' | 'quarter') {
+function changeScale(newScale: 'week' | 'month' | 'quarter' | 'p4s') {
   timeScale.value = newScale;
   offset.value = 0;
 }
@@ -250,9 +250,6 @@ function onBodyScroll(e: Event) {
   }
 }
 </script>
-
-
-
 
 
 <template>

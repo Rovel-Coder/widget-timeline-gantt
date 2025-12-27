@@ -1,18 +1,16 @@
-// src/components/GanttToolbar.vue
-
 <script setup lang="ts">
 const props = defineProps<{
-  timeScale: 'week' | 'month' | 'quarter';
+  timeScale: 'week' | 'month' | 'quarter' | 'p4s';
 }>();
 
 const emit = defineEmits<{
   (e: 'prev'): void;
   (e: 'next'): void;
   (e: 'today'): void;
-  (e: 'changeScale', value: 'week' | 'month' | 'quarter'): void;
+  (e: 'changeScale', value: 'week' | 'month' | 'quarter' | 'p4s'): void;
 }>();
 
-function setScale(scale: 'week' | 'month' | 'quarter') {
+function setScale(scale: 'week' | 'month' | 'quarter' | 'p4s') {
   emit('changeScale', scale);
 }
 </script>
@@ -45,6 +43,13 @@ function setScale(scale: 'week' | 'month' | 'quarter') {
       @click="setScale('quarter')"
     >
       Trimestre
+    </button>
+    <button
+      class="gantt-btn"
+      :class="{ 'is-active': props.timeScale === 'p4s' }"
+      @click="setScale('p4s')"
+    >
+      P4S
     </button>
   </div>
 </template>

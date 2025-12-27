@@ -1,8 +1,7 @@
-// src/composables/useGanttTimeline.ts
 import { computed } from 'vue';
 import type { Ref } from 'vue';
 
-type TimeScale = 'week' | 'month' | 'quarter';
+type TimeScale = 'week' | 'month' | 'quarter' | 'p4s';
 
 export type Bucket = { left: number; width: number; label: string; date?: Date };
 export type TimeOfDayBucket = Bucket & { slot: 'morning' | 'afternoon' | 'night' };
@@ -24,12 +23,22 @@ export function useGanttTimeline(args: TimelineArgs) {
   const baseMinDate = computed(() => {
     const d = new Date(referenceDate.value);
 
-    if (timeScale.value === 'week') {
+    if (timeScale.value === 'week' || timeScale.value === 'p4s') {
       const day = d.getDay();
       const diffToMonday = (day === 0 ? -6 : 1) - day;
-      d.setDate(d.getDate() + diffToMonday);
-      d.setHours(0, 0, 0, 0);
-      return d;
+      const monday = new Date(d);
+      monday.setDate(monday.getDate() + diffToMonday);
+      monday.setHours(0, 0, 0, 0);
+
+      if (timeScale.value === 'week') {
+        return monday;
+      }
+
+      // P4S : samedi de la semaine précédente
+      const prevSaturday = new Date(monday);
+      prevSaturday.setDate(prevSaturday.getDate() - 2);
+      prevSaturday.setHours(0, 0, 0, 0);
+      return prevSaturday;
     }
 
     if (timeScale.value === 'month') {
@@ -47,17 +56,27 @@ export function useGanttTimeline(args: TimelineArgs) {
   const baseMaxDate = computed(() => {
     const d = new Date(referenceDate.value);
 
-    if (timeScale.value === 'week') {
+    if (timeScale.value === 'week' || timeScale.value === 'p4s') {
       const day = d.getDay();
       const diffToMonday = (day === 0 ? -6 : 1) - day;
       const monday = new Date(d);
       monday.setDate(monday.getDate() + diffToMonday);
       monday.setHours(0, 0, 0, 0);
 
-      const sunday = new Date(monday);
-      sunday.setDate(sunday.getDate() + 6);
-      sunday.setHours(23, 59, 59, 999);
-      return sunday;
+      if (timeScale.value === 'week') {
+        const sunday = new Date(monday);
+        sunday.setDate(sunday.getDate() + 6);
+        sunday.setHours(23, 59, 59, 999);
+        return sunday;
+      }
+
+      // P4S : samedi précédent + 30 jours = lundi de la 4e semaine suivante
+      const start = new Date(monday);
+      start.setDate(start.getDate() - 2); // samedi
+      const end = new Date(start);
+      end.setDate(end.getDate() + 30);    // ex : 27/12 → 26/01
+      end.setHours(23, 59, 59, 999);
+      return end;
     }
 
     if (timeScale.value === 'month') {
@@ -76,7 +95,7 @@ export function useGanttTimeline(args: TimelineArgs) {
   const minDate = computed(() => {
     const k = offset.value;
 
-    if (timeScale.value === 'week') {
+    if (timeScale.value === 'week' || timeScale.value === 'p4s') {
       const d = new Date(baseMinDate.value);
       d.setDate(d.getDate() + k * 7);
       return d;
@@ -101,7 +120,7 @@ export function useGanttTimeline(args: TimelineArgs) {
   const maxDate = computed(() => {
     const k = offset.value;
 
-    if (timeScale.value === 'week') {
+    if (timeScale.value === 'week' || timeScale.value === 'p4s') {
       const d = new Date(baseMaxDate.value);
       d.setDate(d.getDate() + k * 7);
       return d;
@@ -142,10 +161,10 @@ export function useGanttTimeline(args: TimelineArgs) {
     return weekNo;
   }
 
-  // Buckets Matin/AM/Nuit (vue semaine)
+  // Buckets Matin/AM/Nuit (vue semaine / P4S)
   const timeOfDayBuckets = computed<TimeOfDayBucket[]>(() => {
     const res: TimeOfDayBucket[] = [];
-    if (timeScale.value !== 'week') return res;
+    if (timeScale.value !== 'week' && timeScale.value !== 'p4s') return res;
 
     const start = new Date(minDate.value);
     const end = new Date(maxDate.value);
@@ -190,10 +209,10 @@ export function useGanttTimeline(args: TimelineArgs) {
     return res;
   });
 
-  // Semaine (ligne 1 - vue semaine)
+  // Semaine (ligne 1 - vue semaine / P4S)
   const weekWeekBuckets = computed<Bucket[]>(() => {
     const res: Bucket[] = [];
-    if (timeScale.value !== 'week') return res;
+    if (timeScale.value !== 'week' && timeScale.value !== 'p4s') return res;
     const start = new Date(minDate.value);
     const end = new Date(maxDate.value);
     const oneDay = 24 * 60 * 60 * 1000;
@@ -213,10 +232,10 @@ export function useGanttTimeline(args: TimelineArgs) {
     return res;
   });
 
-  // Jours (ligne 2 - vue semaine)
+  // Jours (ligne 2 - vue semaine / P4S)
   const weekDayBuckets = computed<Bucket[]>(() => {
     const res: Bucket[] = [];
-    if (timeScale.value !== 'week') return res;
+    if (timeScale.value !== 'week' && timeScale.value !== 'p4s') return res;
     const start = new Date(minDate.value);
     const end = new Date(maxDate.value);
     const oneDay = 24 * 60 * 60 * 1000;

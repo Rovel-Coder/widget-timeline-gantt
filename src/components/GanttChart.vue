@@ -188,11 +188,20 @@ const {
 
 // Navigation
 function goPrev() {
-  offset.value = Math.max(-50, offset.value - 1);
+  if (timeScale.value === 'p4s') {
+    // une période P4S = 4 semaines complètes
+    offset.value = offset.value - 4;
+  } else {
+    offset.value = Math.max(-50, offset.value - 1);
+  }
 }
 
 function goNext() {
-  offset.value += 1;
+  if (timeScale.value === 'p4s') {
+    offset.value = offset.value + 4;
+  } else {
+    offset.value += 1;
+  }
 }
 
 async function goToToday() {
@@ -250,6 +259,7 @@ function onBodyScroll(e: Event) {
   }
 }
 </script>
+
 
 <template>
   <div class="gantt-wrapper">
@@ -592,19 +602,22 @@ function onBodyScroll(e: Event) {
 
 /* Ligne 3 : Heures (time-of-day) */
 .gantt-header-cell-tod {
-  font-size: 9px;
-  opacity: 0.8;
+  /* on garde les blocs colorés mais on masque le texte */
+  font-size: 0;
+  opacity: 0.9;
   font-weight: 500;
+  color: transparent;
+  text-shadow: none;
 }
 
 .gantt-header-cell-tod:nth-child(3n + 1) {
-  background-color: rgba(37, 99, 235, 0.08);
+  background-color: rgba(37, 99, 235, 0.18);
 }
 .gantt-header-cell-tod:nth-child(3n + 2) {
-  background-color: rgba(16, 185, 129, 0.08);
+  background-color: rgba(16, 185, 129, 0.18);
 }
 .gantt-header-cell-tod:nth-child(3n + 3) {
-  background-color: rgba(234, 179, 8, 0.08);
+  background-color: rgba(234, 179, 8, 0.18);
 }
 
 /* Corps principal */
@@ -860,5 +873,3 @@ function onBodyScroll(e: Event) {
   }
 }
 </style>
-
-

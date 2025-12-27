@@ -1,4 +1,12 @@
-import { ref } from 'vue';
+import { ref, watch } from 'vue';  // ✅ FIX: watch importé
+
+// 🛡️ FONCTION SANITIZATION GLOBALE
+const sanitize = (value: any): string => {
+  if (typeof value !== 'string') return '';
+  const div = document.createElement('div');
+  div.textContent = value;
+  return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+};
 
 interface PopupTask {
   id: number;
@@ -9,7 +17,6 @@ interface PopupTask {
   [key: string]: any;
 }
 
-
 export function useGanttPopup(opts: {
   tableRef: any;
   editableCols: { value: string[] };
@@ -17,7 +24,7 @@ export function useGanttPopup(opts: {
   const isPopupOpen = ref(false);
   const selectedTask = ref<PopupTask | null>(null);
 
-  // copie locale éditable
+  // 🛡️ COPIE LOCALE SÉCURISÉE + VALIDATION
   const localTask = ref<PopupTask>({
     id: 0,
     name: '',
@@ -28,46 +35,72 @@ export function useGanttPopup(opts: {
 
   function onTaskClick(task: PopupTask) {
     selectedTask.value = task;
+    
+    // 🛡️ SANITIZATION + VALIDATION des données d'entrée
+    const safeName = sanitize(task.name ?? '');
+    const safeComment = sanitize(task.comment ?? '');
+    
     localTask.value = {
       ...task,
-      // s’assurer que start est une string compatible datetime-local
+      name: safeName,
+      comment: safeComment,
+      duration: Math.max(0.1, Math.min(1000, Number(task.duration) || 1)),
       start: task.start
-        ? new Date(task.start).toISOString().slice(0, 16)
+        ? (() => {
+            const date = new Date(task.start);
+            return isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 16);
+          })()
         : '',
     };
+    
     isPopupOpen.value = true;
   }
 
+  // 🛡️ WATCH pour resynchroniser (✅ FIX TS2304 + TS7006)
+  watch(selectedTask, (newTask: PopupTask | null) => {  // ✅ Type explicite
+    if (newTask && isPopupOpen.value) {
+      localTask.value.name = sanitize(newTask.name ?? '');
+      localTask.value.comment = sanitize(newTask.comment ?? '');
+    }
+  });
+
   async function updateRecordInGrist() {
-    if (!selectedTask.value || !opts.tableRef.value) return;
+    if (!selectedTask.value || !opts.tableRef?.value) return;
+    
     const rowId = selectedTask.value.id;
     const cols = opts.editableCols.value;
 
     if (!rowId || !cols.length) {
+      console.warn('Update Grist: ID ou colonnes manquants');
       return;
     }
 
-    // map localTask -> colonnes Grist
-    const fields: Record<string, any> = {};
+    const safeData = {
+      name: sanitize(localTask.value.name ?? ''),
+      comment: sanitize(localTask.value.comment ?? ''),
+      duration: Math.max(0.1, Math.min(1000, Number(localTask.value.duration) || 1)),
+      start: localTask.value.start ? new Date(localTask.value.start) : null,
+    };
 
+    const fields: Record<string, any> = {};
     for (const col of cols) {
       switch (col) {
         case 'Name':
-          fields[col] = localTask.value.name ?? null;
+          fields[col] = safeData.name || null;
           break;
         case 'Start':
-          fields[col] = localTask.value.start
-            ? new Date(localTask.value.start)
-            : null;
+          fields[col] = safeData.start;
           break;
         case 'Duration':
-          fields[col] = localTask.value.duration ?? null;
+          fields[col] = safeData.duration;
           break;
         case 'Comment':
-          fields[col] = localTask.value.comment ?? null;
+          fields[col] = safeData.comment || null;
           break;
         default:
-          // si tu ajoutes d’autres colonnes éditables, gère-les ici
+          if (localTask.value[col] !== undefined) {
+            fields[col] = sanitize(localTask.value[col]);
+          }
           break;
       }
     }
@@ -79,8 +112,7 @@ export function useGanttPopup(opts: {
       });
       isPopupOpen.value = false;
     } catch (e) {
-      // tu peux ajouter une gestion d’erreur plus avancée
-      console.error('Erreur update Grist', e);
+      console.error('Erreur update Grist:', e);
     }
   }
 

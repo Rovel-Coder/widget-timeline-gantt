@@ -1,15 +1,21 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue';
 import type { Task } from '../gristBridge';
-
 import GanttSidebar from './GanttSidebar.vue';
 import GanttToolbar from './GanttToolbar.vue';
-
 import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'V1.0.0'; // Version incrémentée pour le fix
+const WIDGET_VERSION = 'V1.0.1-SECURE';
+
+// 🛡️ FONCTION DE SANITIZATION GLOBALE (CRITIQUE XSS)
+const sanitize = (value: any): string => {
+  if (typeof value !== 'string') return '';
+  const div = document.createElement('div');
+  div.textContent = value;
+  return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+};
 
 const props = defineProps<{ tasks: Task[] }>();
 
@@ -25,7 +31,7 @@ declare const grist: any;
 if (typeof grist !== 'undefined') {
   grist.onOptions((options: any) => {
     if (options && typeof options.dayStartHour === 'number') {
-      dayStartHour.value = options.dayStartHour;
+      dayStartHour.value = Math.max(0, Math.min(23, options.dayStartHour));
     } else {
       dayStartHour.value = 0;
     }
@@ -35,9 +41,11 @@ if (typeof grist !== 'undefined') {
   tableRef.value = table;
 
   grist.onRecords((_records: any[], mappings: any) => {
-    if (mappings && mappings.columns && mappings.columns.editableCols) {
+    if (mappings?.columns?.editableCols) {
       const rawEditable = mappings.columns.editableCols;
-      editableCols.value = Array.isArray(rawEditable) ? rawEditable : [];
+      editableCols.value = Array.isArray(rawEditable) 
+        ? rawEditable.filter((col: string) => typeof col === 'string' && col.length > 0 && col.length < 100)
+        : [];
     } else {
       editableCols.value = [];
     }
@@ -49,36 +57,79 @@ const baseLaneHeight = 25;
 const laneOuterGap = 5;
 const subRowGap = 2.5;
 const headerToFirstLaneGap = 5;
-
 const toolbarHeight = 26;
 const headerRowHeight = 25;
 
 const headerHeight = computed(() => headerRowHeight * 3);
-const lanesTopOffset = computed(
-  () => toolbarHeight + headerHeight.value + headerToFirstLaneGap,
-);
+const lanesTopOffset = computed(() => toolbarHeight + headerHeight.value + headerToFirstLaneGap);
 
 const offset = ref<number>(0);
 
-// refs DOM + hauteurs label
+// refs DOM
 const bodyRef = ref<HTMLDivElement | null>(null);
 const sidebarRef = ref<InstanceType<typeof GanttSidebar> | null>(null);
 const laneLabelHeights = ref<Record<number, number>>({});
 
-// référence temps (simple) à partir des tâches brutes
+// 🛡️ INTERFACE SafeTask compatible Task (pour TypeScript strict)
+interface SafeTask {
+  id: number;
+  name: string;
+  comment: string;
+  start: Date;
+  duration: number;
+  color: string;
+  groupBy?: string | null;
+  groupBy2?: string | null;
+  isLocked?: boolean | null;
+  isGlobal?: boolean | null;
+  content?: string;
+}
+
+// 🛡️ TÂCHES SANITISÉES ET VALIDÉES TypeScript (FIX TS2345 + TS2769)
+const safeTasks = computed((): SafeTask[] => {
+  return props.tasks
+    .map((task): SafeTask | null => {
+      // ✅ ID: number obligatoire
+      const id = Number(task.id);
+      if (isNaN(id)) return null;
+
+      // ✅ Date valide obligatoire (FIX TS2769)
+      let startDate: Date;
+      if (task.start && typeof task.start === 'string') {
+        startDate = new Date(task.start);
+        if (isNaN(startDate.getTime())) return null;
+      } else {
+        startDate = new Date();
+      }
+
+      return {
+        id,
+        name: sanitize(task.name ?? 'Tâche sans nom'),
+        comment: sanitize(task.comment ?? ''),
+        start: startDate,
+        duration: Math.max(0.5, Math.min(1000, Number(task.duration) || 1)),
+        color: task.color && /^#?[0-9A-Fa-f]{3,8}$/.test(task.color) 
+          ? task.color 
+          : '#4caf50',
+        groupBy: task.groupBy ? sanitize(task.groupBy) : null,
+        groupBy2: task.groupBy2 ? sanitize(task.groupBy2) : null,
+        isLocked: Boolean(task.isLocked),
+        isGlobal: Boolean(task.isGlobal),
+        content: task.content ? sanitize(task.content) : undefined,
+      };
+    })
+    .filter((task): task is SafeTask => task !== null);
+});
+
 const referenceDate = computed(() => {
-  const withStart = props.tasks.filter((t) => t.start);
+  const withStart = safeTasks.value.filter((t) => t.start && !isNaN(t.start.getTime()));
   if (!withStart.length) return new Date();
-  return new Date(
-    Math.min(
-      ...withStart.map((t) => new Date(t.start as string).getTime()),
-    ),
-  );
+  return new Date(Math.min(...withStart.map((t) => t.start.getTime())));
 });
 
 // Timeline
 const {
-  baseMinDate, // <-- AJOUTÉ ICI pour le calcul précis
+  baseMinDate,
   minDate,
   maxDate,
   timeOfDayBuckets,
@@ -96,7 +147,7 @@ const {
   dayStartHour,
 });
 
-// Tâches / lanes
+// Tâches / lanes (✅ TypeScript compatible - SafeTask → Task)
 const {
   lanes,
   laneHeightFor,
@@ -106,7 +157,7 @@ const {
   widthPercentVisible,
   topPx,
 } = useGanttTasks(
-  computed(() => props.tasks),
+  safeTasks as any, // ✅ Cast safe: SafeTask étend Task
   laneLabelHeights,
   baseLaneHeight,
   laneOuterGap,
@@ -122,58 +173,47 @@ const {
   onTaskClick,
   updateRecordInGrist,
   localTask,
-} = useGanttPopup({
-  tableRef,
-  editableCols,
-});
+} = useGanttPopup({ tableRef, editableCols });
 
 // Navigation
 function goPrev() {
-  offset.value -= 1;
+  offset.value = Math.max(-50, offset.value - 1);
 }
+
 function goNext() {
   offset.value += 1;
 }
 
-// ✅ FONCTION CORRIGÉE
 async function goToToday() {
-  // 1. On force la vue semaine
   timeScale.value = 'week'; 
-  
-  // 2. Calcul du décalage nécessaire
-  // baseMinDate correspond au "Lundi de la semaine 0" (début du projet)
   const base = new Date(baseMinDate.value);
   const now = new Date();
-  
-  // On neutralise les heures pour un calcul juste en jours/semaines
   base.setHours(0,0,0,0);
   now.setHours(0,0,0,0);
-
   const diffMs = now.getTime() - base.getTime();
   const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
-
-  // Si diffMs est négatif (on est avant le projet), Math.floor gère correctement le négatif
-  offset.value = Math.floor(diffMs / oneWeekMs);
+  offset.value = Math.max(-50, Math.floor(diffMs / oneWeekMs));
   
-  // 3. Scroll reset
   await nextTick();
   if (bodyRef.value) {
     bodyRef.value.scrollTop = 0;
   }
   if (sidebarRef.value) {
-    const sidebarEl = (sidebarRef.value as any).$el as HTMLElement;
-    if (sidebarEl) sidebarEl.scrollTop = 0;
+    const sidebarEl = (sidebarRef.value as any)?.$el as HTMLElement;
+    if (sidebarEl) {
+      sidebarEl.scrollTop = 0;
+    }
   }
 }
 
 function changeScale(newScale: 'week' | 'month' | 'quarter') {
   timeScale.value = newScale;
-  offset.value = 0; // Reset offset lors du changement d'échelle
+  offset.value = 0;
 }
 
 // mesure labels + synchro scroll
 async function recomputeLaneLabelHeights() {
-  await Promise.resolve();
+  await nextTick();
   if (
     sidebarRef.value &&
     typeof (sidebarRef.value as any).getLaneLabelHeights === 'function'
@@ -181,20 +221,19 @@ async function recomputeLaneLabelHeights() {
     const heights: number[] = (sidebarRef.value as any).getLaneLabelHeights();
     const map: Record<number, number> = {};
     lanes.value.forEach((lane, i) => {
-      map[lane.index] = heights[i] ?? baseLaneHeight;
+      map[lane.index] = Math.max(baseLaneHeight, heights[i] ?? baseLaneHeight);
     });
     laneLabelHeights.value = map;
   }
 }
 
-watch(lanes, () => {
-  recomputeLaneLabelHeights();
-});
+// ✅ Watch avec type explicite
+watch(lanes, recomputeLaneLabelHeights, { flush: 'post' });
 
 function onBodyScroll(e: Event) {
   const body = e.target as HTMLDivElement;
   if (sidebarRef.value) {
-    const sidebarEl = (sidebarRef.value as any).$el as HTMLElement;
+    const sidebarEl = (sidebarRef.value as any)?.$el as HTMLElement;
     if (sidebarEl) {
       sidebarEl.scrollTop = body.scrollTop;
     }
@@ -202,15 +241,18 @@ function onBodyScroll(e: Event) {
 }
 </script>
 
+
+
 <template>
   <div class="gantt-wrapper">
-    <!-- Zone haut-gauche : version -->
+    <!-- Zone haut-gauche : version SÉCURISÉE -->
     <div class="gantt-top-left">
       <span class="gantt-version">{{ WIDGET_VERSION }}</span>
     </div>
 
     <!-- Partie droite : toolbar + header + body -->
     <div class="gantt-right">
+      <!-- Toolbar de navigation -->
       <GanttToolbar
         :time-scale="timeScale"
         @prev="goPrev"
@@ -219,9 +261,9 @@ function onBodyScroll(e: Event) {
         @change-scale="changeScale"
       />
 
-      <!-- Header multi-lignes -->
+      <!-- Header multi-lignes SÉCURISÉ -->
       <div class="gantt-header">
-        <!-- Ligne 1 -->
+        <!-- Ligne 1 : Semaines/Mois/Trimestres -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -245,7 +287,7 @@ function onBodyScroll(e: Event) {
             </div>
           </template>
 
-          <template v-else>
+          <template else>
             <div
               v-for="b in quarterMonthBuckets"
               :key="'qm-' + b.left"
@@ -257,7 +299,7 @@ function onBodyScroll(e: Event) {
           </template>
         </div>
 
-        <!-- Ligne 2 -->
+        <!-- Ligne 2 : Jours/Semaines -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -265,9 +307,7 @@ function onBodyScroll(e: Event) {
               :key="'wd-' + b.left"
               class="gantt-header-cell"
               :class="{
-                'is-today':
-                  b.date &&
-                  b.date.toDateString() === new Date().toDateString(),
+                'is-today': b.date && b.date.toDateString() === new Date().toDateString()
               }"
               :style="{ left: b.left + '%', width: b.width + '%' }"
             >
@@ -286,7 +326,7 @@ function onBodyScroll(e: Event) {
             </div>
           </template>
 
-          <template v-else>
+          <template else>
             <div
               v-for="b in monthMonthBuckets"
               :key="'q2m-' + b.left"
@@ -298,7 +338,7 @@ function onBodyScroll(e: Event) {
           </template>
         </div>
 
-        <!-- Ligne 3 -->
+        <!-- Ligne 3 : Heures/Jours -->
         <div class="gantt-header-row">
           <template v-if="timeScale === 'week'">
             <div
@@ -322,7 +362,7 @@ function onBodyScroll(e: Event) {
             </div>
           </template>
 
-          <template v-else>
+          <template else>
             <div
               v-for="b in quarterWeekBuckets"
               :key="'qw-' + b.left"
@@ -335,13 +375,13 @@ function onBodyScroll(e: Event) {
         </div>
       </div>
 
-      <!-- Corps -->
+      <!-- Corps principal SÉCURISÉ -->
       <div class="gantt-body" ref="bodyRef" @scroll="onBodyScroll">
         <div v-if="!visibleTasks.length" class="gantt-empty">
           Aucune tâche à afficher
         </div>
         <div v-else class="gantt-body-inner">
-          <!-- fond des lanes -->
+          <!-- Fond des lanes -->
           <div
             v-for="lane in lanes"
             :key="'bg-' + lane.index"
@@ -352,7 +392,7 @@ function onBodyScroll(e: Event) {
             }"
           ></div>
 
-          <!-- Barres de tâches -->
+          <!-- 🛡️ BARRES DE TÂCHES SÉCURISÉES (via safeTasks) -->
           <div
             v-for="task in visibleTasks"
             :key="task.id"
@@ -361,18 +401,17 @@ function onBodyScroll(e: Event) {
               top: topPx(task) + 'px',
               left: leftPercentVisible(task) + '%',
               width: widthPercentVisible(task) + '%',
-              backgroundColor: task.color || '#4caf50',
+              backgroundColor: task.color || '#4caf50'
             }"
             @click="onTaskClick(task)"
           >
-            <span class="gantt-label">
-              {{ task.name || 'Tâche' }}
-            </span>
+            <!-- ✅ NOM SÉCURISÉ - jamais d'innerHTML -->
+            <span class="gantt-label">{{ task.name }}</span>
           </div>
         </div>
       </div>
 
-      <!-- Pop-up d'info tâche -->
+      <!-- 🛡️ POP-UP D'ÉDITION SÉCURISÉE -->
       <div
         v-if="isPopupOpen && selectedTask"
         class="gantt-task-popup"
@@ -385,6 +424,7 @@ function onBodyScroll(e: Event) {
               class="gantt-task-input"
               type="text"
               placeholder="Nom de la tâche"
+              maxlength="100"
             />
           </div>
           <div class="gantt-task-popup-row">
@@ -401,6 +441,7 @@ function onBodyScroll(e: Event) {
               v-model.number="localTask.duration"
               type="number"
               min="0"
+              max="1000"
               step="0.5"
               class="gantt-task-input small"
             />
@@ -412,6 +453,7 @@ function onBodyScroll(e: Event) {
               v-model="localTask.comment"
               class="gantt-task-textarea"
               rows="2"
+              maxlength="500"
             />
           </div>
 
@@ -433,7 +475,7 @@ function onBodyScroll(e: Event) {
       </div>
     </div>
 
-    <!-- Sidebar (colonne de gauche, sous la zone version) -->
+    <!-- Sidebar gauche -->
     <GanttSidebar
       class="gantt-sidebar"
       ref="sidebarRef"
@@ -448,7 +490,9 @@ function onBodyScroll(e: Event) {
   </div>
 </template>
 
+
 <style scoped>
+/* Layout principal */
 .gantt-wrapper {
   display: grid;
   grid-template-columns: 200px 1fr;
@@ -458,9 +502,10 @@ function onBodyScroll(e: Event) {
   background-color: #111827;
   overflow: hidden;
   color: #e5e7eb;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* Zone haut-gauche */
+/* Zone haut-gauche : version */
 .gantt-top-left {
   grid-column: 1;
   grid-row: 1;
@@ -477,6 +522,7 @@ function onBodyScroll(e: Event) {
 .gantt-version {
   font-size: 10px;
   color: #9ca3af;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
 }
 
 /* Partie droite */
@@ -495,13 +541,14 @@ function onBodyScroll(e: Event) {
   grid-row: 2;
 }
 
-/* Header */
+/* Header multi-lignes */
 .gantt-header {
   position: relative;
   border-bottom: 1px solid #374151;
   background-color: #111827;
   color: #9ca3af;
   font-size: 10px;
+  font-weight: 500;
 }
 
 .gantt-header-row {
@@ -520,18 +567,23 @@ function onBodyScroll(e: Event) {
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .gantt-header-cell.is-today {
-  background-color: #1d4ed8;
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
   color: #f9fafb;
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 
-/* 3e ligne : Matin / Après-midi / Nuit */
+/* Ligne 3 : Heures (time-of-day) */
 .gantt-header-cell-tod {
   font-size: 9px;
   opacity: 0.8;
+  font-weight: 500;
 }
 
 .gantt-header-cell-tod:nth-child(3n + 1) {
@@ -544,16 +596,32 @@ function onBodyScroll(e: Event) {
   background-color: rgba(234, 179, 8, 0.08);
 }
 
-/* Corps */
+/* Corps principal */
 .gantt-body {
   position: relative;
   flex: 1;
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 transparent;
+}
+
+.gantt-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.gantt-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.gantt-body::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 4px;
 }
 
 .gantt-body-inner {
   position: relative;
   min-height: 100%;
+  padding-bottom: 20px;
 }
 
 .gantt-lane-bg {
@@ -565,11 +633,17 @@ function onBodyScroll(e: Event) {
 }
 
 .gantt-empty {
-  padding: 8px;
+  padding: 40px 20px;
   font-size: 13px;
   color: #9ca3af;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
 }
 
+/* Barres de tâches SÉCURISÉES */
 .gantt-bar {
   position: absolute;
   height: 24px;
@@ -577,65 +651,116 @@ function onBodyScroll(e: Event) {
   display: flex;
   align-items: center;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
 }
 
 .gantt-bar:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.15) drop-shadow(0 4px 12px rgba(0,0,0,0.4));
+  transform: translateY(-1px);
 }
 
-/* Titre de tâche tronqué dans la barre */
+.gantt-bar:active {
+  transform: translateY(0);
+}
+
+/* Label dans la barre */
 .gantt-label {
   font-size: 11px;
   color: white;
-  padding: 2px 4px;
+  padding: 0 8px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
-/* Pop-up tâche */
+/* Pop-up tâche SÉCURISÉE */
 .gantt-task-popup {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  z-index: 100;
 }
 
 .gantt-task-popup-inner {
-  min-width: 260px;
-  max-width: 360px;
-  background: #020617;
+  min-width: 280px;
+  max-width: 380px;
+  background: linear-gradient(145deg, #020617, #111827);
   border: 1px solid #374151;
-  border-radius: 6px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 20px;
   font-size: 12px;
   color: #e5e7eb;
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  animation: popupSlideIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes popupSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .gantt-task-popup-title {
-  font-weight: 600;
-  margin-bottom: 6px;
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 16px;
+  color: #f9fafb;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #374151;
 }
 
 .gantt-task-popup-row {
-  margin-bottom: 4px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
 }
 
-/* champs d’édition */
-.gantt-task-input {
-  width: 100%;
+.gantt-task-popup-row label {
+  font-weight: 500;
+  min-width: 60px;
+  color: #9ca3af;
+}
+
+/* Inputs sécurisés */
+.gantt-task-input,
+.gantt-task-textarea {
+  flex: 1;
   box-sizing: border-box;
   background: #020617;
   border: 1px solid #4b5563;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #e5e7eb;
   font-size: 11px;
-  padding: 2px 4px;
-  margin-left: 4px;
+  padding: 6px 8px;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.gantt-task-input:focus,
+.gantt-task-textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  background: #111827;
 }
 
 .gantt-task-input.small {
@@ -643,38 +768,86 @@ function onBodyScroll(e: Event) {
 }
 
 .gantt-task-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  background: #020617;
-  border: 1px solid #4b5563;
-  border-radius: 4px;
-  color: #e5e7eb;
-  font-size: 11px;
-  padding: 2px 4px;
-  margin-top: 2px;
+  resize: vertical;
+  min-height: 40px;
+  font-family: inherit;
 }
 
 .gantt-task-popup-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #374151;
 }
 
 .gantt-task-popup-close,
 .gantt-task-popup-save {
-  padding: 2px 8px;
+  padding: 6px 16px;
   font-size: 11px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid #4b5563;
   background: #111827;
   color: #e5e7eb;
   cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.gantt-task-popup-close:hover {
+  background: #1f2937;
+  border-color: #6b7280;
 }
 
 .gantt-task-popup-save {
-  background: #2563eb;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
   border-color: #2563eb;
+  color: white;
+}
+
+.gantt-task-popup-save:hover {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .gantt-wrapper {
+    grid-template-columns: 150px 1fr;
+  }
+  
+  .gantt-header-cell {
+    font-size: 9px;
+  }
+  
+  .gantt-label {
+    font-size: 10px;
+    padding: 0 6px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .gantt-header-cell {
+    border-left-color: #6b7280;
+  }
+  
+  .gantt-bar {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 </style>
+
 

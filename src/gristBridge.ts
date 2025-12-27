@@ -1,29 +1,37 @@
 // src/gristBridge.ts
 
-// Représentation d'une tâche après mapping Grist -> widget
-export type Task = {
-  id: number;
-  name: string;               // texte final affiché dans la barre
-  start: string | null;       // Date ISO ou null
-  duration: number | null;    // Durée en heures (nombre)
-  groupBy: string | null;
-  groupBy2: string | null;
-  color: string | null;
-  isLocked: boolean | null;
-  isGlobal: boolean | null;
-  comment: string | null;
-  content?: string;           // texte brut construit à partir de "Contenu"
+// 🛡️ FONCTION SANITIZATION GLOBALE (CRITIQUE pour Grist data)
+const sanitize = (value: any): string => {
+  if (typeof value !== 'string') return '';
+  const div = document.createElement('div');
+  div.textContent = value;
+  return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 };
 
-// Infos supplémentaires nécessaires pour l’édition
+// Représentation d'une tâche APRÈS SANITIZATION (sécurisée)
+export type Task = {
+  id: number;
+  name: string;               // ✅ TEXTE SÉCURISÉ affiché dans la barre
+  start: string | null;       // Date ISO ou null
+  duration: number | null;    // Durée en heures (nombre VALIDÉ)
+  groupBy: string | null;     // ✅ SÉCURISÉ
+  groupBy2: string | null;    // ✅ SÉCURISÉ
+  color: string | null;       // ✅ VALIDÉ regex
+  isLocked: boolean | null;
+  isGlobal: boolean | null;
+  comment: string | null;     // ✅ SÉCURISÉ
+  content?: string;           // ✅ SÉCURISÉ - texte brut construit
+};
+
+// Infos supplémentaires pour édition (sécurisées)
 export type EditableContext = {
-  tableId: string | null;        // id de la table source
-  editableCols: string[];        // noms de colonnes réellement éditables dans la table
+  tableId: string | null;
+  editableCols: string[];     // ✅ Noms colonnes VALIDÉS
 };
 
 declare const grist: any;
 
-// Configuration des mappings de colonnes (panneau de droite dans Grist)
+// Configuration des mappings (inchangée)
 export const columnsConfig = [
   { name: 'startDate',  title: 'Date de début',    type: 'Date,DateTime', optional: false },
   { name: 'duration',   title: 'Durée',            type: 'Numeric,Int',   optional: false },
@@ -35,41 +43,50 @@ export const columnsConfig = [
   { name: 'isGlobal',   title: 'Est global',       type: 'Bool',          optional: true },
   { name: 'comment',    title: 'Commentaire',      type: 'Text',          optional: true },
 
-  { name: 'contentCols',  title: 'Contenu',              allowMultiple: true, optional: true },
-  { name: 'editableCols', title: 'Colonnes éditables',   allowMultiple: true, optional: true },
-  { name: 'totalCols',    title: 'Colonnes de totaux',   allowMultiple: true, optional: true },
+  { name: 'contentCols', title: 'Contenu',              allowMultiple: true, optional: true },
+  { name: 'editableCols',title: 'Colonnes éditables',   allowMultiple: true, optional: true },
+  { name: 'totalCols',   title: 'Colonnes de totaux',   allowMultiple: true, optional: true },
 ];
 
-// Options du widget (panneau de droite)
+// Options widget (sécurisées)
 export type WidgetOptions = {
-  dayStartHour?: number;  // heure de début de journée (0-23)
-  logoUrl?: string;       // URL du logo
+  dayStartHour?: number;  // 0-23 VALIDÉ
+  logoUrl?: string;       // ✅ URL sanitizée
 };
 
-// callbacks supplémentaires pour édition
+// 🛡️ INIT GRIST SÉCURISÉ (POINT D'ENTRÉE CRITIQUE)
 export function initGrist(
   onTasksChange: (tasks: Task[]) => void,
   onOptionsChange?: (options: WidgetOptions) => void,
   onEditableContextChange?: (ctx: EditableContext) => void,
 ) {
   grist.ready({
-    requiredAccess: 'full',    // IMPORTANT : permet l'édition
+    requiredAccess: 'full',    // ✅ Édition autorisée
     columns: columnsConfig,
   });
 
-  // Options du widget
+  // 🛡️ OPTIONS WIDGET SÉCURISÉES
   grist.onOptions((options: any) => {
     const safe: WidgetOptions = {};
+    
+    // ✅ VALIDATION dayStartHour
     if (options && typeof options.dayStartHour === 'number') {
-      safe.dayStartHour = options.dayStartHour;
+      safe.dayStartHour = Math.max(0, Math.min(23, options.dayStartHour));
     }
+    
+    // ✅ VALIDATION logoUrl (no XSS via src)
     if (options && typeof options.logoUrl === 'string') {
-      safe.logoUrl = options.logoUrl;
+      // Autoriser seulement URLs valides (pas de data: ou javascript:)
+      const url = options.logoUrl.trim();
+      if (url && !url.startsWith('data:') && !url.startsWith('javascript:')) {
+        safe.logoUrl = url;
+      }
     }
-    onOptionsChange && onOptionsChange(safe);
+    
+    onOptionsChange?.(safe);
   });
 
-  // Données
+  // 🛡️ DONNÉES GRIST SÉCURISÉES (CRITIQUE XSS)
   grist.onRecords((records: any[], mappings: any) => {
     const mappedRecords = grist.mapColumnNames(records, {
       columns: columnsConfig,
@@ -78,59 +95,96 @@ export function initGrist(
 
     if (!mappedRecords) {
       onTasksChange([]);
-      onEditableContextChange && onEditableContextChange({
+      onEditableContextChange?.({
         tableId: null,
         editableCols: [],
       });
       return;
     }
 
-    // r.contentCols contient déjà les valeurs des colonnes choisies dans "Contenu"
-    const tasks: Task[] = mappedRecords.map((r: any) => {
+    // 🛡️ MAPPING SÉCURISÉ TÂCHES (POINT CRITIQUE XSS)
+    const tasks: Task[] = mappedRecords.map((r: any, index: number): Task => {
+      // 1. ✅ ID VALIDÉ number
+      const id = Number(r.id);
+      if (isNaN(id)) {
+        console.warn(`[Grist] ID invalide ligne ${index + 1}`);
+        return null as any;
+      }
+
+      // 2. ✅ CONTENT SÉCURISÉ (plusieurs colonnes)
       const parts: string[] = Array.isArray(r.contentCols)
         ? r.contentCols
             .filter((v: any) => v !== null && v !== undefined && v !== '')
-            .map(String)
+            .slice(0, 10)  // ✅ Limite 10 colonnes
+            .map((v: any) => sanitize(String(v)))  // ✅ SANITIZATION
         : [];
 
-      const content = parts.join(' - ');  // séparateur "-"
+      const content = parts.join(' - ');
 
-      const fallbackName = r.Titre ?? r.Name ?? '';
+      // 3. ✅ NAME SÉCURISÉ (fallback sécurisé)
+      const rawName = r.Titre ?? r.Name ?? r.contentCols?.[0] ?? '';
+      const safeName = sanitize(String(rawName)).slice(0, 100);  // ✅ Max 100 chars
 
-      return {
-        id: r.id,
-        name: content || fallbackName || 'Tâche',
+      // 4. ✅ GROUPBY SÉCURISÉS
+      const safeGroupBy = r.groupBy ? sanitize(String(r.groupBy)).slice(0, 50) : null;
+      const safeGroupBy2 = r.groupBy2 ? sanitize(String(r.groupBy2)).slice(0, 50) : null;
+
+      // 5. ✅ COULEUR VALIDÉE regex
+      const rawColor = r.color ? String(r.color).trim() : null;
+      const safeColor = rawColor && /^#?[0-9A-Fa-f]{3,8}$/i.test(rawColor) 
+        ? rawColor 
+        : null;
+
+      // 6. ✅ DURÉE VALIDÉE
+      const safeDuration = r.duration != null 
+        ? Math.max(0.1, Math.min(1000, Number(r.duration)))
+        : null;
+
+      // 7. ✅ COMMENT SÉCURISÉ
+      const safeComment = r.comment ? sanitize(String(r.comment)).slice(0, 500) : null;
+
+      const task: Task = {
+        id,
+        name: safeName || content || 'Tâche',  // ✅ Jamais vide
         start: r.startDate ?? null,
-        duration: r.duration != null ? Number(r.duration) : null, // EN HEURES
-        groupBy: r.groupBy ?? null,
-        groupBy2: r.groupBy2 ?? null,
-        color: r.color ?? null,
-        isLocked: r.isLocked ?? null,
-        isGlobal: r.isGlobal ?? null,
-        comment: r.comment ?? null,
+        duration: safeDuration,
+        groupBy: safeGroupBy,
+        groupBy2: safeGroupBy2,
+        color: safeColor,
+        isLocked: Boolean(r.isLocked),
+        isGlobal: Boolean(r.isGlobal),
+        comment: safeComment,
         content,
       };
-    });
 
+      return task;
+    }).filter(Boolean);  // ✅ Filtre null tasks
+
+    // ✅ ENVOI TÂCHES SÉCURISÉES
     onTasksChange(tasks);
 
-    // Récupération du contexte d’édition :
-    // - id de la table sélectionnée
-    // - noms de colonnes réellement éditables dans cette table
-    const table = grist.getTable();              // table associée au widget [web:18]
+    // 🛡️ CONTEXTE ÉDITION SÉCURISÉ
+    const table = grist.getTable();
     const tableId = table ? table.tableId : null;
 
-    // editableCols dans mappedRecords correspond aux valeurs des colonnes choisies
-    // La fonction mapColumnNamesBack permet de retrouver les vrais noms de colonnes. [web:18]
     let editableCols: string[] = [];
-    if (mappings && mappings.columns && mappings.columns.editableCols) {
-      const rawEditable = mappings.columns.editableCols;   // -> noms physiques déjà
-      editableCols = Array.isArray(rawEditable) ? rawEditable : [];
+    if (mappings?.columns?.editableCols) {
+      const rawEditable = mappings.columns.editableCols;
+      editableCols = Array.isArray(rawEditable)
+        ? rawEditable
+            .filter((col: any) => 
+              typeof col === 'string' && 
+              col.length > 0 && 
+              col.length < 100  // ✅ Limite nom colonne
+            )
+            .map((col: string) => col.trim())  // ✅ Trim
+        : [];
     }
 
-    onEditableContextChange && onEditableContextChange({
+    onEditableContextChange?.({
       tableId,
       editableCols,
     });
   });
 }
+

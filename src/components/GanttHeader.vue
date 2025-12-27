@@ -1,3 +1,5 @@
+
+// src/components/GanttHeader.vue
 <script setup lang="ts">
 type Bucket = { left: number; width: number; label: string; date?: Date };
 

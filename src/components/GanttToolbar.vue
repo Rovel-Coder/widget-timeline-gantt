@@ -1,3 +1,5 @@
+// src/components/GanttToolbar.vue
+
 <script setup lang="ts">
 const props = defineProps<{
   timeScale: 'week' | 'month' | 'quarter';

@@ -215,11 +215,21 @@ export function useGanttTimeline(args: TimelineArgs) {
   const weekWeekBuckets = computed<Bucket[]>(() => {
     const res: Bucket[] = [];
     if (timeScale.value !== 'week' && timeScale.value !== 'p4s') return res;
-    const start = new Date(minDate.value);
-    const end = new Date(maxDate.value);
+
     const oneDay = 24 * 60 * 60 * 1000;
 
-    let weekStart = new Date(start);
+    // On aligne les semaines sur le lundi qui couvre minDate,
+    // même si minDate est un samedi en P4S.
+    const first = new Date(minDate.value);
+    const day = first.getDay();
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    const firstMonday = new Date(first);
+    firstMonday.setDate(firstMonday.getDate() + diffToMonday);
+    firstMonday.setHours(0, 0, 0, 0);
+
+    const end = new Date(maxDate.value);
+
+    let weekStart = firstMonday;
     while (weekStart <= end) {
       const weekEnd = new Date(weekStart.getTime() + 6 * oneDay);
       const weekNumber = getIsoWeekNumber(weekStart);

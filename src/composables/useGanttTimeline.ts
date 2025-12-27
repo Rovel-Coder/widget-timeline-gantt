@@ -9,24 +9,24 @@ export type TimeOfDayBucket = Bucket & { slot: 'morning' | 'afternoon' | 'night'
 type TimelineArgs = {
   timeScale: Ref<TimeScale>;
   offset: Ref<number>;
-  referenceDateSource: () => Date;     // encore disponible si besoin ailleurs
+  referenceDateSource: () => Date;
   dayStartHour: Ref<number>;
 };
 
 export function useGanttTimeline(args: TimelineArgs) {
   const { timeScale, offset, referenceDateSource, dayStartHour } = args;
 
-  // date de référence issue des tâches (toujours exposée si tu veux t'en servir)
+  // date de référence issue des tâches (toujours exposée si besoin)
   const referenceDate = computed(() => referenceDateSource());
 
-  // date du jour, normalisée
+  // date du jour normalisée
   const todayRef = computed(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   });
 
-  // bornes "de base" avant décalage offset, basées sur aujourd'hui
+  // bornes "de base" avant offset : basées sur aujourd'hui
   const baseMinDate = computed(() => {
     const d = new Date(todayRef.value);
 
@@ -37,17 +37,8 @@ export function useGanttTimeline(args: TimelineArgs) {
       monday.setDate(monday.getDate() + diffToMonday);
       monday.setHours(0, 0, 0, 0);
 
-      if (timeScale.value === 'week') {
-        // semaine classique : du lundi au dimanche
-        return monday;
-      }
-
-      // P4S : ancrage logique sur le lundi de la 1ère semaine,
-      // mais on élargit l'affichage au samedi précédent
-      const visualStart = new Date(monday);
-      visualStart.setDate(visualStart.getDate() - 2); // samedi avant ce lundi
-      visualStart.setHours(0, 0, 0, 0);
-      return visualStart;
+      // Semaine et P4S commencent toutes les deux au lundi
+      return monday;
     }
 
     if (timeScale.value === 'month') {
@@ -79,13 +70,11 @@ export function useGanttTimeline(args: TimelineArgs) {
         return sunday;
       }
 
-      // P4S :
-      // - 4 semaines complètes à partir de ce lundi (S1 → S4)
-      // - on ajoute le lundi qui suit S4 pour la continuité visuelle
-      const visualEnd = new Date(monday);
-      visualEnd.setDate(visualEnd.getDate() + 28); // lundi après S4
-      visualEnd.setHours(23, 59, 59, 999);
-      return visualEnd;
+      // P4S : 4 semaines pleines = 28 jours, du lundi S1 au dimanche S4
+      const sundayS4 = new Date(monday);
+      sundayS4.setDate(sundayS4.getDate() + 27); // 28 jours - 1
+      sundayS4.setHours(23, 59, 59, 999);
+      return sundayS4;
     }
 
     if (timeScale.value === 'month') {
@@ -225,8 +214,7 @@ export function useGanttTimeline(args: TimelineArgs) {
 
     const oneDay = 24 * 60 * 60 * 1000;
 
-    // On aligne les semaines sur le lundi qui couvre minDate,
-    // même si minDate est un samedi en P4S.
+    // On aligne les semaines sur le lundi qui couvre minDate
     const first = new Date(minDate.value);
     const day = first.getDay();
     const diffToMonday = (day === 0 ? -6 : 1) - day;
@@ -353,7 +341,7 @@ export function useGanttTimeline(args: TimelineArgs) {
     return res;
   });
 
-  // Trimestre (ligne 1 - vue trimestre) = regroupement de 3 mois
+  // Trimestre (ligne 1 - vue trimestre)
   const quarterMonthBuckets = computed<Bucket[]>(() => {
     const res: Bucket[] = [];
     if (timeScale.value !== 'quarter') return res;

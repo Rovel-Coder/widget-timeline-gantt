@@ -7,7 +7,7 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'V1.0.3-SECURE';
+const WIDGET_VERSION = 'Version 1.0.0';
 
 // 🛡️ FONCTION DE SANITIZATION GLOBALE (CRITIQUE XSS)
 const sanitize = (value: any): string => {

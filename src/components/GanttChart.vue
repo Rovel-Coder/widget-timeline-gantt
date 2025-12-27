@@ -7,7 +7,7 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'V1.0.1-SECURE';
+const WIDGET_VERSION = 'Mk 1';
 
 // 🛡️ FONCTION DE SANITIZATION GLOBALE (CRITIQUE XSS)
 const sanitize = (value: any): string => {
@@ -141,6 +141,7 @@ const referenceDate = computed(() => {
 // Timeline
 const {
   baseMinDate,
+  baseMaxDate,
   minDate,
   maxDate,
   timeOfDayBuckets,
@@ -228,7 +229,56 @@ async function goToToday() {
 
 function changeScale(newScale: 'week' | 'month' | 'quarter' | 'p4s') {
   timeScale.value = newScale;
-  offset.value = 0;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // bornes base (offset 0) de la nouvelle vue
+  const start0 = new Date(baseMinDate.value);
+  const end0 = new Date(baseMaxDate.value);
+  start0.setHours(0, 0, 0, 0);
+  end0.setHours(23, 59, 59, 999);
+
+  const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+
+  if (newScale === 'week') {
+    // périodes = semaines ISO
+    const diffMs = today.getTime() - start0.getTime();
+    const k = Math.floor(diffMs / oneWeekMs);
+    offset.value = k;
+    return;
+  }
+
+  if (newScale === 'month') {
+    // périodes = mois
+    const baseYear = start0.getFullYear();
+    const baseMonth = start0.getMonth();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const k = (year - baseYear) * 12 + (month - baseMonth);
+    offset.value = k;
+    return;
+  }
+
+  if (newScale === 'quarter') {
+    // périodes = trimestres
+    const baseYear = start0.getFullYear();
+    const baseQuarter = Math.floor(start0.getMonth() / 3);
+    const year = today.getFullYear();
+    const quarter = Math.floor(today.getMonth() / 3);
+    const k = (year - baseYear) * 4 + (quarter - baseQuarter);
+    offset.value = k;
+    return;
+  }
+
+  if (newScale === 'p4s') {
+    // périodes = blocs de 4 semaines (élargis visuellement)
+    const periodMs = 4 * oneWeekMs;
+    const diffMs = today.getTime() - start0.getTime();
+    const k = Math.floor(diffMs / periodMs);
+    offset.value = k;
+    return;
+  }
 }
 
 // mesure labels + synchro scroll
@@ -259,7 +309,6 @@ function onBodyScroll(e: Event) {
   }
 }
 </script>
-
 
 <template>
   <div class="gantt-wrapper">

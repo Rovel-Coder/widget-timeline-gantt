@@ -13,6 +13,10 @@ type TimelineArgs = {
   dayStartHour: Ref<number>;
 };
 
+// Lundi de la semaine ISO 1 de 2025 : du lundi 30/12/2024 au dimanche 05/01/2025.[web:114][web:127]
+const P4S_BASE = new Date(2024, 11, 30);
+P4S_BASE.setHours(0, 0, 0, 0);
+
 export function useGanttTimeline(args: TimelineArgs) {
   const { timeScale, offset, referenceDateSource, dayStartHour } = args;
 
@@ -26,19 +30,23 @@ export function useGanttTimeline(args: TimelineArgs) {
     return d;
   });
 
-  // bornes "de base" avant offset : basées sur aujourd'hui
+  // bornes "de base" avant offset
   const baseMinDate = computed(() => {
     const d = new Date(todayRef.value);
 
-    if (timeScale.value === 'week' || timeScale.value === 'p4s') {
+    if (timeScale.value === 'week') {
+      // lundi de la semaine courante (ISO).[web:73]
       const day = d.getDay();
       const diffToMonday = (day === 0 ? -6 : 1) - day;
       const monday = new Date(d);
       monday.setDate(monday.getDate() + diffToMonday);
       monday.setHours(0, 0, 0, 0);
-
-      // Semaine et P4S commencent toutes les deux au lundi
       return monday;
+    }
+
+    if (timeScale.value === 'p4s') {
+      // base fixe P4S = lundi semaine 1.
+      return new Date(P4S_BASE);
     }
 
     if (timeScale.value === 'month') {
@@ -47,6 +55,7 @@ export function useGanttTimeline(args: TimelineArgs) {
       return d;
     }
 
+    // trimestre
     const q = Math.floor(d.getMonth() / 3);
     const qStart = new Date(d.getFullYear(), q * 3, 1);
     qStart.setHours(0, 0, 0, 0);
@@ -56,23 +65,23 @@ export function useGanttTimeline(args: TimelineArgs) {
   const baseMaxDate = computed(() => {
     const d = new Date(todayRef.value);
 
-    if (timeScale.value === 'week' || timeScale.value === 'p4s') {
+    if (timeScale.value === 'week') {
       const day = d.getDay();
       const diffToMonday = (day === 0 ? -6 : 1) - day;
       const monday = new Date(d);
       monday.setDate(monday.getDate() + diffToMonday);
       monday.setHours(0, 0, 0, 0);
 
-      if (timeScale.value === 'week') {
-        const sunday = new Date(monday);
-        sunday.setDate(sunday.getDate() + 6);
-        sunday.setHours(23, 59, 59, 999);
-        return sunday;
-      }
+      const sunday = new Date(monday);
+      sunday.setDate(sunday.getDate() + 6);
+      sunday.setHours(23, 59, 59, 999);
+      return sunday;
+    }
 
-      // P4S : 4 semaines pleines = 28 jours, du lundi S1 au dimanche S4
-      const sundayS4 = new Date(monday);
-      sundayS4.setDate(sundayS4.getDate() + 27); // 28 jours - 1
+    if (timeScale.value === 'p4s') {
+      // P4S : 4 semaines pleines à partir de P4S_BASE = 28 jours.[web:73]
+      const sundayS4 = new Date(P4S_BASE);
+      sundayS4.setDate(sundayS4.getDate() + 27);
       sundayS4.setHours(23, 59, 59, 999);
       return sundayS4;
     }
@@ -83,6 +92,7 @@ export function useGanttTimeline(args: TimelineArgs) {
       return lastDayOfMonth;
     }
 
+    // trimestre
     const q = Math.floor(d.getMonth() / 3);
     const qEnd = new Date(d.getFullYear(), q * 3 + 3, 0);
     qEnd.setHours(23, 59, 59, 999);
@@ -93,7 +103,14 @@ export function useGanttTimeline(args: TimelineArgs) {
   const minDate = computed(() => {
     const k = offset.value;
 
-    if (timeScale.value === 'week' || timeScale.value === 'p4s') {
+    if (timeScale.value === 'week') {
+      const d = new Date(baseMinDate.value);
+      d.setDate(d.getDate() + k * 7);
+      return d;
+    }
+
+    if (timeScale.value === 'p4s') {
+      // 1 offset P4S = 1 semaine, mais on positionne l'offset par blocs de 4 dans GanttChart.
       const d = new Date(baseMinDate.value);
       d.setDate(d.getDate() + k * 7);
       return d;
@@ -106,6 +123,7 @@ export function useGanttTimeline(args: TimelineArgs) {
       return d;
     }
 
+    // trimestre
     const d = new Date(baseMinDate.value);
     d.setMonth(d.getMonth() + k * 3);
     const day = d.getDay();
@@ -118,7 +136,13 @@ export function useGanttTimeline(args: TimelineArgs) {
   const maxDate = computed(() => {
     const k = offset.value;
 
-    if (timeScale.value === 'week' || timeScale.value === 'p4s') {
+    if (timeScale.value === 'week') {
+      const d = new Date(baseMaxDate.value);
+      d.setDate(d.getDate() + k * 7);
+      return d;
+    }
+
+    if (timeScale.value === 'p4s') {
       const d = new Date(baseMaxDate.value);
       d.setDate(d.getDate() + k * 7);
       return d;
@@ -131,6 +155,7 @@ export function useGanttTimeline(args: TimelineArgs) {
       return d;
     }
 
+    // trimestre
     const d = new Date(baseMaxDate.value);
     d.setMonth(d.getMonth() + k * 3);
     const day = d.getDay();
@@ -145,7 +170,7 @@ export function useGanttTimeline(args: TimelineArgs) {
     return diff || 1;
   });
 
-  // utilitaire ISO semaine
+  // utilitaire ISO semaine.[web:50]
   function getIsoWeekNumber(date: Date): number {
     const tmp = new Date(
       Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
@@ -416,3 +441,4 @@ export function useGanttTimeline(args: TimelineArgs) {
     quarterWeekBuckets,
   };
 }
+

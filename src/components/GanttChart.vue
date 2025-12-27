@@ -7,7 +7,11 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'Version 1.0.0';
+const WIDGET_VERSION = 'Version 1.0.1';
+
+// Lundi de la semaine ISO 1 de 2025 pour P4S.[web:114][web:128]
+const P4S_BASE = new Date(2024, 11, 30);
+P4S_BASE.setHours(0, 0, 0, 0);
 
 // 🛡️ FONCTION DE SANITIZATION GLOBALE (CRITIQUE XSS)
 const sanitize = (value: any): string => {
@@ -206,6 +210,7 @@ function goNext() {
 }
 
 async function goToToday() {
+  // on retourne en vue semaine centrée sur aujourd'hui
   timeScale.value = 'week';
   const base = new Date(baseMinDate.value);
   const now = new Date();
@@ -231,7 +236,7 @@ async function goToToday() {
  * Au changement de vue :
  * - on met à jour timeScale
  * - on recalcule un offset tel que la période courante contienne "aujourd'hui"
- *   en utilisant baseMinDate/baseMaxDate de la nouvelle vue.
+ *   avec une base fixe pour P4S (lundi semaine 1).[web:73][web:114]
  */
 function changeScale(newScale: 'week' | 'month' | 'quarter' | 'p4s') {
   timeScale.value = newScale;
@@ -242,23 +247,28 @@ function changeScale(newScale: 'week' | 'month' | 'quarter' | 'p4s') {
   const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
 
   // On force le recalcul des bornes de base avec le nouveau timeScale
-  const start0 = new Date(baseMinDate.value);
-  const end0 = new Date(baseMaxDate.value);
+  const start0 = new Date(
+    newScale === 'p4s' ? P4S_BASE : baseMinDate.value,
+  );
+  const end0 = new Date(
+    newScale === 'p4s' ? new Date(P4S_BASE.getTime() + 27 * oneWeekMs / 4) : baseMaxDate.value,
+  );
   start0.setHours(0, 0, 0, 0);
   end0.setHours(23, 59, 59, 999);
 
-  if (newScale === 'week' || newScale === 'p4s') {
-    // semaines ISO : 1 offset = 1 semaine
+  if (newScale === 'week') {
     const diffMs = today.getTime() - start0.getTime();
     const kWeek = Math.floor(diffMs / oneWeekMs);
+    offset.value = kWeek;
+    return;
+  }
 
-    if (newScale === 'week') {
-      offset.value = kWeek;
-    } else {
-      // P4S : un bloc = 4 semaines
-      const kBlock = Math.floor(kWeek / 4);
-      offset.value = kBlock * 4;
-    }
+  if (newScale === 'p4s') {
+    // nombre de semaines écoulées depuis P4S_BASE.
+    const diffWeeks = Math.floor((today.getTime() - P4S_BASE.getTime()) / oneWeekMs);
+    // index de bloc de 4 semaines contenant today.
+    const blockIndex = Math.floor(diffWeeks / 4);
+    offset.value = blockIndex * 4;
     return;
   }
 
@@ -309,6 +319,7 @@ function onBodyScroll(e: Event) {
   }
 }
 </script>
+
 
 
 <template>

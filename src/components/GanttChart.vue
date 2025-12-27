@@ -7,7 +7,7 @@ import { useGanttTasks } from '../composables/useGanttTasks';
 import { useGanttTimeline } from '../composables/useGanttTimeline';
 import { useGanttPopup } from '../composables/useGanttPopup';
 
-const WIDGET_VERSION = 'V1.0.1-SECURE';
+const WIDGET_VERSION = 'V1.0.2-SECURE';
 
 // 🛡️ FONCTION DE SANITIZATION GLOBALE (CRITIQUE XSS)
 const sanitize = (value: any): string => {
@@ -187,9 +187,9 @@ const {
   localTask,
 } = useGanttPopup({ tableRef, editableCols });
 
-// origine fixe pour les calculs de périodes : lundi 1er janvier 2024 (ISO S1)
-const calendarBase = new Date(2024, 0, 1);
-calendarBase.setHours(0, 0, 0, 0);
+// origine fixe P4S : lundi de la semaine 52 2025 (22/12/2025)
+const p4sBase = new Date(2025, 11, 22);
+p4sBase.setHours(0, 0, 0, 0);
 
 // Navigation
 function goPrev() {
@@ -242,38 +242,16 @@ function changeScale(newScale: 'week' | 'month' | 'quarter' | 'p4s') {
 
   const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
 
-  if (newScale === 'week') {
-    // semaines ISO basées sur calendarBase
-    const diffMs = today.getTime() - calendarBase.getTime();
-    offset.value = Math.floor(diffMs / oneWeekMs);
-    return;
-  }
-
-  if (newScale === 'month') {
-    const baseYear = calendarBase.getFullYear();
-    const baseMonth = calendarBase.getMonth();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    offset.value = (year - baseYear) * 12 + (month - baseMonth);
-    return;
-  }
-
-  if (newScale === 'quarter') {
-    const baseYear = calendarBase.getFullYear();
-    const baseQuarter = Math.floor(calendarBase.getMonth() / 3);
-    const year = today.getFullYear();
-    const quarter = Math.floor(today.getMonth() / 3);
-    offset.value = (year - baseYear) * 4 + (quarter - baseQuarter);
-    return;
-  }
-
   if (newScale === 'p4s') {
-    // blocs de 4 semaines
-    const diffMs = today.getTime() - calendarBase.getTime();
+    // blocs de 4 semaines à partir de la semaine 52 (22/12/2025)
+    const diffMs = today.getTime() - p4sBase.getTime();
     const periodMs = 4 * oneWeekMs;
     offset.value = Math.floor(diffMs / periodMs);
     return;
   }
+
+  // pour les autres vues, comportement simple: recentrage
+  offset.value = 0;
 }
 
 // mesure labels + synchro scroll
@@ -304,7 +282,6 @@ function onBodyScroll(e: Event) {
   }
 }
 </script>
-
 
 <template>
   <div class="gantt-wrapper">

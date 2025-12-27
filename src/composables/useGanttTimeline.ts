@@ -31,14 +31,16 @@ export function useGanttTimeline(args: TimelineArgs) {
       monday.setHours(0, 0, 0, 0);
 
       if (timeScale.value === 'week') {
+        // semaine classique : du lundi au dimanche
         return monday;
       }
 
-      // P4S : samedi de la semaine précédente
-      const prevSaturday = new Date(monday);
-      prevSaturday.setDate(prevSaturday.getDate() - 2);
-      prevSaturday.setHours(0, 0, 0, 0);
-      return prevSaturday;
+      // P4S : ancrage logique sur le lundi de la 1ère semaine,
+      // mais on élargit l'affichage au samedi précédent
+      const visualStart = new Date(monday);
+      visualStart.setDate(visualStart.getDate() - 2); // samedi avant ce lundi
+      visualStart.setHours(0, 0, 0, 0);
+      return visualStart;
     }
 
     if (timeScale.value === 'month') {
@@ -70,13 +72,13 @@ export function useGanttTimeline(args: TimelineArgs) {
         return sunday;
       }
 
-      // P4S : samedi précédent + 30 jours = lundi de la 4e semaine suivante
-      const start = new Date(monday);
-      start.setDate(start.getDate() - 2); // samedi
-      const end = new Date(start);
-      end.setDate(end.getDate() + 30);    // ex : 27/12 → 26/01
-      end.setHours(23, 59, 59, 999);
-      return end;
+      // P4S :
+      // - 4 semaines complètes à partir de ce lundi (S1 → S4)
+      // - on ajoute le lundi qui suit S4 pour la continuité visuelle
+      const visualEnd = new Date(monday);
+      visualEnd.setDate(visualEnd.getDate() + 28); // lundi après S4
+      visualEnd.setHours(23, 59, 59, 999);
+      return visualEnd;
     }
 
     if (timeScale.value === 'month') {
@@ -408,4 +410,3 @@ export function useGanttTimeline(args: TimelineArgs) {
     quarterWeekBuckets,
   };
 }
-

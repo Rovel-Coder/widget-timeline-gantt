@@ -251,7 +251,6 @@ function onBodyScroll(e: Event) {
 }
 </script>
 
-
 <template>
   <div class="gantt-wrapper">
     <!-- Zone haut-gauche : version SÉCURISÉE -->
@@ -274,7 +273,7 @@ function onBodyScroll(e: Event) {
       <div class="gantt-header">
         <!-- Ligne 1 : Semaines/Mois/Trimestres -->
         <div class="gantt-header-row">
-          <template v-if="timeScale === 'week'">
+          <template v-if="timeScale === 'week' || timeScale === 'p4s'">
             <div
               v-for="b in weekWeekBuckets"
               :key="'ww-' + b.left"
@@ -310,7 +309,7 @@ function onBodyScroll(e: Event) {
 
         <!-- Ligne 2 : Jours/Semaines -->
         <div class="gantt-header-row">
-          <template v-if="timeScale === 'week'">
+          <template v-if="timeScale === 'week' || timeScale === 'p4s'">
             <div
               v-for="b in weekDayBuckets"
               :key="'wd-' + b.left"
@@ -350,7 +349,7 @@ function onBodyScroll(e: Event) {
 
         <!-- Ligne 3 : Heures/Jours -->
         <div class="gantt-header-row">
-          <template v-if="timeScale === 'week'">
+          <template v-if="timeScale === 'week' || timeScale === 'p4s'">
             <div
               v-for="b in timeOfDayBuckets"
               :key="'tod-' + b.left + '-' + b.slot"
@@ -502,8 +501,6 @@ function onBodyScroll(e: Event) {
     />
   </div>
 </template>
-
-
 
 <style scoped>
 /* Layout principal */

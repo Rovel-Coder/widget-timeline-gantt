@@ -408,3 +408,4 @@ export function useGanttTimeline(args: TimelineArgs) {
     quarterWeekBuckets,
   };
 }
+
